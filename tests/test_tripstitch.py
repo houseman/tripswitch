@@ -62,7 +62,7 @@ def test_init(mocker, faker, fallback_function):
     assert instance._provider == mock_provider
 
 
-def test_init_from_provider__backend_set(mocker, faker):
+def test_init__provider_backend_state_is_set(mocker, faker):
     """Test the initialization of a Tripswitch instance from the backend state.
 
     GIVEN a name and a provider
@@ -90,7 +90,7 @@ def test_init_from_provider__backend_set(mocker, faker):
     assert instance.failure_threshold == 50
 
 
-def test_init_from_provider__backend_not_set(mocker, faker):
+def test_init__provider_backend_state_not_set(mocker, faker):
     """Test the initialization of a Tripswitch instance from the backend state.
 
     GIVEN a name and a provider
@@ -102,7 +102,7 @@ def test_init_from_provider__backend_not_set(mocker, faker):
 
     mock_name = faker.word()
     mock_client = mocker.Mock(spec=redis.Redis)
-    mock_client.hgetall.return_value = {}
+    mock_client.hgetall.side_effect = [{}, {"status": "closed", "last_failure": None, "failure_count": "0"}]
 
     provider = providers.RedisProvider(client=mock_client)
 

@@ -54,15 +54,15 @@ class Tripswitch(cb.CircuitBreaker):
         super().__init__(*args, **kwargs)
         self._name = name
         self._provider = provider
-        self.initialize()
+        self.init_from_backend_provider()
 
-    def initialize(self) -> None:
+    def init_from_backend_provider(self) -> None:
         """Initialize the circuit breaker from the backend provider.
 
         :return: None
         :rtype: None
         """
-        state = self._provider.initialize(self._name)
+        state = self._provider.get_or_init(self._name)
         self._state = state.status.value
         self._last_failure = state.last_failure
         self._failure_count = state.failure_count
@@ -95,7 +95,7 @@ class Tripswitch(cb.CircuitBreaker):
         """
         super().__exit__(exc_type, exc_value, _traceback)
 
-        self._provider.update(
+        self._provider.set(
             name=self.name,
             state=BackendState(
                 status=CircuitStatus(self.state),
