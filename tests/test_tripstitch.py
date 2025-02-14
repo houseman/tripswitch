@@ -9,18 +9,24 @@ from tripswitch import providers
 from tripswitch.tripswitch import CircuitStatus
 
 
-@pytest.fixture
-def fallback_function():
-    """Return a simple callable."""
-    return lambda x: x
-
-
 class MockError(Exception):
     """A simple exception class for testing purposes."""
 
     def __eq__(self, other: MockError) -> bool:
         """Return True if the other object is an instance of MockError."""
         return isinstance(other, MockError)
+
+
+@pytest.fixture
+def fallback_function():
+    """Return a simple callable."""
+    return lambda x: x
+
+
+@pytest.fixture
+def mock_error():
+    """Return a simple `MockError` instance."""
+    return MockError("Boom!")
 
 
 def test_init(mocker, faker, fallback_function):
@@ -108,7 +114,7 @@ def test_init_from_provider__backend_not_set(mocker, faker):
     assert instance.failure_threshold == 50
 
 
-def test_update_provider__error_updates_backend(mocker, faker):
+def test_context_manager__closed__error__updates_backend__opens_circuit(mocker, faker, mock_error):
     """Test the update to backend provider.
 
     GIVEN a Tripswitch instance
@@ -135,10 +141,8 @@ def test_update_provider__error_updates_backend(mocker, faker):
         expected_exception=(MockError,),
     )
 
-    exception = MockError("Boom!")
-
     def foo() -> None:
-        raise exception
+        raise mock_error
 
     with instance:
         foo()
@@ -149,7 +153,7 @@ def test_update_provider__error_updates_backend(mocker, faker):
     )
 
 
-def test_update_provider__non_error_updates_backend(mocker, faker):
+def test_context_manager__closed__non_error__updates_backend__circuit_stays_closed(mocker, faker):
     """Test the update to backend provider.
 
     GIVEN a Tripswitch instance
@@ -167,6 +171,45 @@ def test_update_provider__non_error_updates_backend(mocker, faker):
         "status": "closed",
         "last_failure": None,
         "failure_count": "0",
+    }
+
+    instance = Tripswitch(
+        mock_name,
+        provider=providers.RedisProvider(client=mock_client),
+        failure_threshold=100,
+        expected_exception=(MockError,),
+    )
+
+    def foo() -> None:
+        pass
+
+    with instance:
+        foo()
+
+    mock_client.hmset.assert_called_once_with(
+        mock_name,
+        {"status": CircuitStatus.CLOSED, "last_failure": None, "failure_count": 0},
+    )
+
+
+def test_context_manager__open__non_error__updates_backend__circuit_closes(mocker, faker, mock_error):
+    """Test the update to backend provider.
+
+    GIVEN a Tripswitch instance
+    WHEN the wrapped function is called
+    WHEN an exception is raised
+    THEN the state is updated in the provider
+    THEN the last failure is set
+    THEN the failure count is incremented
+    """
+    from tripswitch import Tripswitch
+
+    mock_name = faker.word()
+    mock_client = mocker.Mock(spec=redis.Redis)
+    mock_client.hgetall.return_value = {
+        "status": "open",
+        "last_failure": mock_error,
+        "failure_count": "101",
     }
 
     instance = Tripswitch(
