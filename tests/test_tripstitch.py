@@ -1,9 +1,14 @@
 """Tests for the Tripswitch class."""
 
+# ruff: noqa: ANN202
 from __future__ import annotations
+
+import pickle
 
 import pytest
 import redis
+import valkey
+from pymemcache.client import base as memcache
 
 from tripswitch import providers
 from tripswitch.tripswitch import CircuitStatus
@@ -29,7 +34,7 @@ def mock_error():
     return MockError("Boom!")
 
 
-def test_init(mocker, faker, fallback_function):
+def test_init__valkey(mocker, faker, fallback_function):
     """Test the initialization of a Tripswitch instance.
 
     GIVEN a name and a provider
@@ -44,12 +49,20 @@ def test_init(mocker, faker, fallback_function):
     from tripswitch import Tripswitch
 
     mock_name = faker.word()
-    mock_provider = mocker.Mock(spec=providers.RedisProvider)
+    mock_client = mocker.Mock(spec=valkey.Valkey)
+    mock_client.hgetall.return_value = {
+        "status": "closed",
+        "last_failure": None,
+        "failure_count": "0",
+    }
+
+    provider = providers.ValkeyProvider(client=mock_client)
+
     mock_expected_exceptions = (mocker.Mock(), mocker.Mock())
 
     instance = Tripswitch(
         mock_name,
-        provider=mock_provider,
+        provider=provider,
         fallback_function=fallback_function,
         expected_exception=mock_expected_exceptions,
     )
@@ -59,7 +72,52 @@ def test_init(mocker, faker, fallback_function):
     )
 
     assert instance.name == mock_name
-    assert instance._provider == mock_provider
+    assert instance._provider == provider
+
+
+def test_init__memcache(mocker, faker, fallback_function):
+    """Test the initialization of a Tripswitch instance.
+
+    GIVEN a name and a provider
+    WHEN a Tripswitch is instantiated
+    THEN the CircuitBreaker is initialized with the given kwargs
+    THEN the name and provider are set
+    """
+    import circuitbreaker
+
+    init_spy = mocker.spy(circuitbreaker.CircuitBreaker, "__init__")
+
+    from tripswitch import Tripswitch
+
+    mock_name = faker.word()
+    mock_client = mocker.Mock(spec=memcache.Client)
+    mock_client.get.side_effect = [
+        None,
+        pickle.dumps(
+            {
+                "status": "closed",
+                "last_failure": None,
+                "failure_count": "0",
+            }
+        ),
+    ]
+    provider = providers.MemcacheProvider(client=mock_client)
+
+    mock_expected_exceptions = (mocker.Mock(), mocker.Mock())
+
+    instance = Tripswitch(
+        mock_name,
+        provider=provider,
+        fallback_function=fallback_function,
+        expected_exception=mock_expected_exceptions,
+    )
+
+    init_spy.assert_called_once_with(
+        instance, fallback_function=fallback_function, expected_exception=mock_expected_exceptions
+    )
+
+    assert instance.name == mock_name
+    assert instance._provider == provider
 
 
 def test_init__provider_backend_state_is_set(mocker, faker):
@@ -156,7 +214,7 @@ def test_context_manager__closed__error__updates_backend__opens_circuit(mocker, 
         expected_exception=(MockError,),
     )
 
-    def foo() -> None:
+    def foo():
         raise mock_error
 
     with instance:
@@ -195,7 +253,7 @@ def test_context_manager__closed__non_error__updates_backend__circuit_stays_clos
         expected_exception=(MockError,),
     )
 
-    def foo() -> None:
+    def foo():
         pass
 
     with instance:
@@ -234,7 +292,7 @@ def test_context_manager__open__non_error__updates_backend__circuit_closes(mocke
         expected_exception=(MockError,),
     )
 
-    def foo() -> None:
+    def foo():
         pass
 
     with instance:
@@ -263,7 +321,7 @@ def test_monitor_decorator(mocker, mock_error):
         FAILURE_THRESHOLD = 1
 
     @monitor(cls=MyTripswitch)
-    def foo() -> None:
+    def foo():
         raise mock_error
 
     foo()

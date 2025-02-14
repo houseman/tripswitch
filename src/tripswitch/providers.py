@@ -2,18 +2,21 @@
 
 from __future__ import annotations
 
+import pickle
 from abc import ABCMeta, abstractmethod
 from dataclasses import asdict
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING, Union, cast
 
 from typing_extensions import TypeAlias
 
 from .tripswitch import BackendState, CircuitStatus
 
 if TYPE_CHECKING:
+    import pymemcache.client.base as memcache
     import redis
+    import valkey
 
-    BackendClient: TypeAlias = redis.Redis
+    BackendClient: TypeAlias = Union[redis.Redis, valkey.Valkey, memcache.Client]
 
 
 class StateNotFoundError(Exception):
@@ -27,7 +30,7 @@ class StateNotFoundError(Exception):
         super().__init__(f"State not found for circuitbreaker {name}.")
 
 
-class _BaseBackedProvider(metaclass=ABCMeta):
+class _AbstractBackedProvider(metaclass=ABCMeta):
     """Base class for all provider classes."""
 
     @abstractmethod
@@ -73,18 +76,18 @@ class _BaseBackedProvider(metaclass=ABCMeta):
         """
 
 
-class RedisProvider(_BaseBackedProvider):
-    """A provider that uses Redis as a backend."""
+class _BaseProvider(_AbstractBackedProvider):
+    """A base provider class for backend."""
 
-    def __init__(self, client: redis.Redis) -> None:
-        """Initialize a new RedisProvider instance.
+    def __init__(self, client: BackendClient) -> None:
+        """Initialize a new instance.
 
-        :param client: A Redis client instance.
+        :param client: A client instance.
         """
-        self._client = client
+        self._client = client  # pragma: no cover
 
     def get_or_init(self, name: str) -> BackendState:
-        """Initialize the Redis backend.
+        """Initialize the backend.
 
         Return state if this is set, else initialize the backend.
 
@@ -110,7 +113,7 @@ class RedisProvider(_BaseBackedProvider):
             return self.get(name)
 
     def get(self, name: str) -> BackendState:
-        """Read state from the Redis backend.
+        """Read state from the backend.
 
         If no state exists, raises a StateNotFoundError.
 
@@ -130,7 +133,7 @@ class RedisProvider(_BaseBackedProvider):
         )
 
     def set(self, name: str, state: BackendState) -> None:
-        """Update the Redis backend.
+        """Update the backend.
 
         :param state: The state of the circuit breaker.
         :return: None
@@ -139,4 +142,67 @@ class RedisProvider(_BaseBackedProvider):
         self._client.hmset(name, asdict(state))
 
 
-BackedProvider: TypeAlias = _BaseBackedProvider
+class RedisProvider(_BaseProvider):
+    """A provider that uses Redis as a backend."""
+
+    def __init__(self, client: redis.Redis) -> None:
+        """Initialize a new RedisProvider instance.
+
+        :param client: A Redis client instance.
+        """
+        self._client = client
+
+
+class ValkeyProvider(_BaseProvider):
+    """A provider that uses Valkey as a backend."""
+
+    def __init__(self, client: valkey.Valkey) -> None:
+        """Initialize a new ValkeyProvider instance.
+
+        :param client: A Valkey client instance.
+        """
+        self._client = client
+
+
+class MemcacheProvider(_BaseProvider):
+    """A provider that uses Memcache as a backend."""
+
+    def __init__(self, client: memcache.Client) -> None:
+        """Initialize a new MemcacheProvider instance.
+
+        :param client: A Memcache client instance.
+        """
+        self._client = client
+
+    def get(self, name: str) -> BackendState:
+        """Read state from the Memcache backend.
+
+        If no state exists, raises a StateNotFoundError.
+
+        :param name: The name of the circuit breaker instance.
+        :return: The state of the circuit breaker.
+        :rtype: BackendState
+        :raises StateNotFoundError: If no state exists.
+        """
+        if not (raw := self._client.get(name)):
+            raise StateNotFoundError(name=name)
+
+        # Return the persisted state.
+        state: dict = pickle.loads(raw)  # noqa: S301
+        return BackendState(
+            status=CircuitStatus(state["status"]),
+            last_failure=state["last_failure"],
+            failure_count=int(state["failure_count"]),
+        )
+
+    def set(self, name: str, state: BackendState) -> None:
+        """Update the Memcache backend.
+
+        :param state: The state of the circuit breaker.
+        :return: None
+        :rtype: None
+        """
+        self._client.set(name, pickle.dumps(asdict(state)))
+
+
+BackedProvider: TypeAlias = _AbstractBackedProvider
