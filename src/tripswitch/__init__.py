@@ -2,6 +2,6 @@
 
 from __future__ import annotations
 
-from .tripswitch import Tripswitch
+from .tripswitch import Tripswitch, monitor
 
-__all__ = ("Tripswitch",)
+__all__ = ("Tripswitch", "monitor")

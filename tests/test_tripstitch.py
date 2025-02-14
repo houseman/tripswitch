@@ -114,6 +114,21 @@ def test_init__provider_backend_state_not_set(mocker, faker):
     assert instance.failure_threshold == 50
 
 
+def test_provider__none(faker):
+    """Test the provider property.
+
+    GIVEN a Tripswitch instance
+    WHEN the provider is not set
+    THEN a ValueError is raised
+    """
+    from tripswitch import Tripswitch
+
+    mock_name = faker.word()
+
+    with pytest.raises(ValueError, match=f"No provider was set for the circuit breaker {mock_name}."):
+        Tripswitch(mock_name)
+
+
 def test_context_manager__closed__error__updates_backend__opens_circuit(mocker, faker, mock_error):
     """Test the update to backend provider.
 
@@ -228,4 +243,32 @@ def test_context_manager__open__non_error__updates_backend__circuit_closes(mocke
     mock_client.hmset.assert_called_once_with(
         mock_name,
         {"status": CircuitStatus.CLOSED, "last_failure": None, "failure_count": 0},
+    )
+
+
+def test_monitor_decorator(mocker, mock_error):
+    """Test the `monitor` decorator."""
+    from tripswitch import Tripswitch, monitor
+
+    mock_client = mocker.Mock(spec=redis.Redis)
+    mock_client.hgetall.return_value = {
+        "status": "closed",
+        "last_failure": None,
+        "failure_count": "0",
+    }
+
+    class MyTripswitch(Tripswitch):
+        EXPECTED_EXCEPTIONS = (MockError,)
+        BACKEND = providers.RedisProvider(mock_client)
+        FAILURE_THRESHOLD = 1
+
+    @monitor(cls=MyTripswitch)
+    def foo() -> None:
+        raise mock_error
+
+    foo()
+
+    mock_client.hmset.assert_called_once_with(
+        "foo",
+        {"status": CircuitStatus.OPEN, "last_failure": mock_error, "failure_count": 1},
     )

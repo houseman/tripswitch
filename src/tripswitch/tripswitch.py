@@ -2,9 +2,10 @@
 
 from __future__ import annotations
 
+import functools
 from dataclasses import dataclass
 from enum import Enum
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, Callable
 
 import circuitbreaker as cb
 
@@ -34,13 +35,13 @@ class CircuitStatus(Enum):
 class Tripswitch(cb.CircuitBreaker):
     """A circuit breaker that can share state between instances."""
 
-    NAMESPACE: str
+    BACKEND: BackedProvider | None = None
 
     def __init__(
         self,
         /,
         name: str,
-        provider: BackedProvider,
+        provider: BackedProvider | None = None,
         *args: tuple,
         **kwargs: dict,
     ) -> None:
@@ -53,7 +54,7 @@ class Tripswitch(cb.CircuitBreaker):
         """
         super().__init__(*args, **kwargs)
         self._name = name
-        self._provider = provider
+        self._provider = provider if provider is not None else self.BACKEND
         self.init_from_backend_provider()
 
     def init_from_backend_provider(self) -> None:
@@ -62,10 +63,23 @@ class Tripswitch(cb.CircuitBreaker):
         :return: None
         :rtype: None
         """
-        state = self._provider.get_or_init(self._name)
+        state = self.provider.get_or_init(self._name)
         self._state = state.status.value
         self._last_failure = state.last_failure
         self._failure_count = state.failure_count
+
+    @property
+    def provider(self) -> BackedProvider:
+        """Return the backend provider for the circuit breaker.
+
+        :return: The backend provider for the circuit breaker.
+        :rtype: BackedProvider
+        """
+        if self._provider is None:
+            message = f"No provider was set for the circuit breaker {self.name}."
+            raise ValueError(message)
+
+        return self._provider
 
     @property
     def failure_threshold(self) -> int:
@@ -95,7 +109,7 @@ class Tripswitch(cb.CircuitBreaker):
         """
         super().__exit__(exc_type, exc_value, _traceback)
 
-        self._provider.set(
+        self.provider.set(
             name=self.name,
             state=BackendState(
                 status=CircuitStatus(self.state),
@@ -108,3 +122,17 @@ class Tripswitch(cb.CircuitBreaker):
             return self.is_failure(exc_type, exc_value)
 
         return True
+
+
+def monitor(*, cls: type[Tripswitch] = Tripswitch) -> Callable[..., Any]:
+    """Return a Tripswitch circuit breaker decorator."""
+
+    def decorator(func: Callable[..., Any]) -> Callable[..., Any]:
+        @functools.wraps(func)
+        def wrapper(*args: tuple, **kwargs: dict) -> Callable[..., Any]:
+            # Assuming `cb.circuit` is a valid function
+            return cb.circuit(cls=cls, name=func.__name__)(func)(*args, **kwargs)
+
+        return wrapper
+
+    return decorator
