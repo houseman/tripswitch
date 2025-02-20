@@ -68,6 +68,9 @@ ignore = [
 [tool.ruff.lint.isort]
 required-imports = ["from __future__ import annotations"]
 
+[tool.ruff.lint.pydocstyle]
+convention = "numpy"
+
 [tool.mypy]
 files = ["src"]
 exclude = ["build"]
@@ -76,6 +79,10 @@ ignore_errors = false
 
 [[tool.mypy.overrides]]
 module = ["circuitbreaker.*"]
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = ["pymemcache.*"]
 ignore_missing_imports = true
 
 [[tool.mypy.overrides]]
@@ -101,6 +108,7 @@ exclude_lines = [
     "if TYPE_CHECKING:",
     "if t.TYPE_CHECKING:",
     "pass",
+    "@abstractmethod",
     "raise NotImplementedError()",
 ]
 

@@ -220,9 +220,9 @@ def test_context_manager__closed__error__updates_backend__opens_circuit(mocker, 
     with instance:
         foo()
 
-    mock_client.hmset.assert_called_once_with(
+    mock_client.hset.assert_called_once_with(
         mock_name,
-        {"status": CircuitStatus.OPEN, "last_failure": instance.last_failure, "failure_count": 101},
+        mapping={"status": CircuitStatus.OPEN, "last_failure": instance.last_failure, "failure_count": 101},
     )
 
 
@@ -259,9 +259,9 @@ def test_context_manager__closed__non_error__updates_backend__circuit_stays_clos
     with instance:
         foo()
 
-    mock_client.hmset.assert_called_once_with(
+    mock_client.hset.assert_called_once_with(
         mock_name,
-        {"status": CircuitStatus.CLOSED, "last_failure": None, "failure_count": 0},
+        mapping={"status": CircuitStatus.CLOSED, "last_failure": None, "failure_count": 0},
     )
 
 
@@ -298,9 +298,9 @@ def test_context_manager__open__non_error__updates_backend__circuit_closes(mocke
     with instance:
         foo()
 
-    mock_client.hmset.assert_called_once_with(
+    mock_client.hset.assert_called_once_with(
         mock_name,
-        {"status": CircuitStatus.CLOSED, "last_failure": None, "failure_count": 0},
+        mapping={"status": CircuitStatus.CLOSED, "last_failure": None, "failure_count": 0},
     )
 
 
@@ -326,7 +326,7 @@ def test_monitor_decorator(mocker, mock_error):
 
     foo()
 
-    mock_client.hmset.assert_called_once_with(
+    mock_client.hset.assert_called_once_with(
         "foo",
-        {"status": CircuitStatus.OPEN, "last_failure": mock_error, "failure_count": 1},
+        mapping={"status": CircuitStatus.OPEN, "last_failure": mock_error, "failure_count": 1},
     )

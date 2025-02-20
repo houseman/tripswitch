@@ -5,18 +5,18 @@ from __future__ import annotations
 import pickle
 from abc import ABCMeta, abstractmethod
 from dataclasses import asdict
-from typing import TYPE_CHECKING, Union, cast
+from typing import Generic, TypeVar, cast
 
+import redis
+import valkey
+from pymemcache.client.base import Client as Memcache
 from typing_extensions import TypeAlias
 
 from .tripswitch import BackendState, CircuitStatus
 
-if TYPE_CHECKING:
-    import pymemcache.client.base as memcache
-    import redis
-    import valkey
-
-    BackendClient: TypeAlias = Union[redis.Redis, valkey.Valkey, memcache.Client]
+# Define a type variable to represent the backend client type.
+ClientT = TypeVar("ClientT")
+HashClientT = TypeVar("HashClientT", redis.Redis, valkey.Valkey)
 
 
 class StateNotFoundError(Exception):
@@ -25,75 +25,65 @@ class StateNotFoundError(Exception):
     def __init__(self, name: str) -> None:
         """Initialize a new StateNotFoundError instance.
 
-        :param name: The name of the circuit breaker instance.
+        Parameters
+        ----------
+        name : str
+            The name of the circuit breaker instance.
+
+        Returns
+        -------
+        None
         """
         super().__init__(f"State not found for circuitbreaker {name}.")
 
 
-class _AbstractBackedProvider(metaclass=ABCMeta):
-    """Base class for all provider classes."""
+class _AbstractBackedProvider(Generic[ClientT], metaclass=ABCMeta):
+    """Abstract class for all provider classes."""
 
     @abstractmethod
-    def __init__(self, client: BackendClient) -> None:
-        """Initialize a new provider instance.
-
-        :param client: A backend client instance.
-        :return: None
-        :rtype: None
-        """
+    def __init__(self, client: ClientT) -> None: ...
 
     @abstractmethod
-    def get_or_init(self, name: str) -> BackendState:
-        """Initialize the backend.
-
-        Return state if this is set, else initialize the backend.
-
-        :param name: The name of the circuit breaker instance.
-        :return: The state of the circuit breaker.
-        :rtype BackendState
-        """
+    def get_or_init(self, name: str) -> BackendState: ...
 
     @abstractmethod
-    def get(self, name: str) -> BackendState:
-        """Read state from the backend.
-
-        If no state exists, raises a StateNotFoundError.
-
-        :param name: The name of the circuit breaker instance.
-        :return: The state of the circuit breaker.
-        :rtype BackendState | None
-        :raises StateNotFoundError: If no state exists.
-        """
+    def get(self, name: str) -> BackendState: ...
 
     @abstractmethod
-    def set(self, name: str, state: BackendState) -> None:
-        """Update the backend.
-
-        :param name: The name of the circuit breaker instance.
-        :param state: The state of the circuit breaker.
-        :return: None
-        :rtype: None
-        """
+    def set(self, name: str, state: BackendState) -> None: ...
 
 
-class _BaseProvider(_AbstractBackedProvider):
-    """A base provider class for backend."""
+class _BaseBackendProvider(_AbstractBackedProvider[ClientT]):
+    """A base provider class that implements common logic for backend operations."""
 
-    def __init__(self, client: BackendClient) -> None:
+    def __init__(self, client: ClientT) -> None:
         """Initialize a new instance.
 
-        :param client: A client instance.
+        Parameters
+        ----------
+        client : ClientT
+            A backend client instance.
+
+        Returns
+        -------
+        None
         """
-        self._client = client  # pragma: no cover
+        self._client: ClientT = client
 
     def get_or_init(self, name: str) -> BackendState:
         """Initialize the backend.
 
         Return state if this is set, else initialize the backend.
 
-        :param name: The name of the circuit breaker instance.
-        :return: The state of the circuit breaker.
-        :rtype: BackendState
+        Parameters
+        ----------
+        name : str
+            The name of the circuit breaker instance.
+
+        Returns
+        -------
+        BackendState
+            The state of the circuit breaker.
         """
         # Return the persisted state if it exists.
         try:
@@ -112,15 +102,27 @@ class _BaseProvider(_AbstractBackedProvider):
             # Refresh the state from the backend.
             return self.get(name)
 
+
+class _BaseHashKeyBackendProvider(_BaseBackendProvider[HashClientT]):
+    """A base provider class that implements common logic for hash key backend operations."""
+
     def get(self, name: str) -> BackendState:
         """Read state from the backend.
 
-        If no state exists, raises a StateNotFoundError.
+        Parameters
+        ----------
+        name : str
+            The name of the circuit breaker instance.
 
-        :param name: The name of the circuit breaker instance.
-        :return: The state of the circuit breaker.
-        :rtype: BackendState
-        :raises StateNotFoundError: If no state exists.
+        Returns
+        -------
+        BackendState
+            The state of the circuit breaker.
+
+        Raises
+        ------
+        StateNotFoundError
+            If no state exists.
         """
         if not (state := cast(dict, self._client.hgetall(name))):
             raise StateNotFoundError(name=name)
@@ -135,54 +137,48 @@ class _BaseProvider(_AbstractBackedProvider):
     def set(self, name: str, state: BackendState) -> None:
         """Update the backend.
 
-        :param state: The state of the circuit breaker.
-        :return: None
-        :rtype: None
+        Parameters
+        ----------
+        name : str
+            The name of the circuit breaker instance.
+        state : BackendState
+            The state of the circuit breaker.
+
+        Returns
+        -------
+        None
         """
-        self._client.hmset(name, asdict(state))
+        self._client.hset(name, mapping=asdict(state))
 
 
-class RedisProvider(_BaseProvider):
+class RedisProvider(_BaseHashKeyBackendProvider[redis.Redis]):
     """A provider that uses Redis as a backend."""
 
-    def __init__(self, client: redis.Redis) -> None:
-        """Initialize a new RedisProvider instance.
 
-        :param client: A Redis client instance.
-        """
-        self._client = client
-
-
-class ValkeyProvider(_BaseProvider):
+class ValkeyProvider(_BaseHashKeyBackendProvider[valkey.Valkey]):
     """A provider that uses Valkey as a backend."""
 
-    def __init__(self, client: valkey.Valkey) -> None:
-        """Initialize a new ValkeyProvider instance.
 
-        :param client: A Valkey client instance.
-        """
-        self._client = client
-
-
-class MemcacheProvider(_BaseProvider):
+class MemcacheProvider(_BaseBackendProvider[Memcache]):
     """A provider that uses Memcache as a backend."""
-
-    def __init__(self, client: memcache.Client) -> None:
-        """Initialize a new MemcacheProvider instance.
-
-        :param client: A Memcache client instance.
-        """
-        self._client = client
 
     def get(self, name: str) -> BackendState:
         """Read state from the Memcache backend.
 
-        If no state exists, raises a StateNotFoundError.
+        Parameters
+        ----------
+        name : str
+            The name of the circuit breaker instance.
 
-        :param name: The name of the circuit breaker instance.
-        :return: The state of the circuit breaker.
-        :rtype: BackendState
-        :raises StateNotFoundError: If no state exists.
+        Returns
+        -------
+        BackendState
+            The state of the circuit breaker.
+
+        Raises
+        ------
+        StateNotFoundError
+            If no state exists.
         """
         if not (raw := self._client.get(name)):
             raise StateNotFoundError(name=name)
@@ -198,9 +194,16 @@ class MemcacheProvider(_BaseProvider):
     def set(self, name: str, state: BackendState) -> None:
         """Update the Memcache backend.
 
-        :param state: The state of the circuit breaker.
-        :return: None
-        :rtype: None
+        Parameters
+        ----------
+        name : str
+            The name of the circuit breaker instance.
+        state : BackendState
+            The state of the circuit breaker.
+
+        Returns
+        -------
+        None
         """
         self._client.set(name, pickle.dumps(asdict(state)))
 
