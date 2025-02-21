@@ -38,7 +38,7 @@ class StateNotFoundError(Exception):
 
 
 class _AbstractBackedProvider(Generic[ClientT], metaclass=ABCMeta):
-    """Abstract class for all provider classes."""
+    """Abstract class for all backend provider classes."""
 
     @abstractmethod
     def __init__(self, client: ClientT) -> None: ...
@@ -208,4 +208,4 @@ class MemcacheProvider(_BaseBackendProvider[Memcache]):
         self._client.set(name, pickle.dumps(asdict(state)))
 
 
-BackedProvider: TypeAlias = _AbstractBackedProvider
+Backend: TypeAlias = _AbstractBackedProvider

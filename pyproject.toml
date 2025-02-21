@@ -1,6 +1,6 @@
 [project]
 name = "tripswitch"
-version = "0.0.1dev1"
+version = "0.0.1dev2"
 description = "A Python Circuit Breaker implementation"
 readme = { file = "README.md", content-type = "text/markdown" }
 license = { file = "LICENSE" }
