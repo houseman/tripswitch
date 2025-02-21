@@ -1,0 +1,130 @@
+[project]
+name = "tripswitch"
+version = "0.0.1dev1"
+description = "A Python Circuit Breaker implementation"
+readme = { file = "README.md", content-type = "text/markdown" }
+license = { file = "LICENSE" }
+requires-python = ">=3.9"
+authors = [{ name = "Scott Houseman", email = "scott@houseman.co.za" }]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3 :: Only",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+    "Typing :: Typed",
+]
+dependencies = ["circuitbreaker>=2.0.0", "typing-extensions>=4.12.2"]
+
+[project.optional-dependencies]
+redis = ["redis>=5.2.1"]
+valkey = ["valkey>=6.1.0"]
+memcache = ["pymemcache>=4.0.0"]
+all = ["redis>=5.2.1", "valkey>=6.1.0", "pymemcache>=4.0.0"]
+
+[dependency-groups]
+dev = [
+    "ruff>=0.9.5",
+    "faker>=36.1.0",
+    "mypy>=1.15.0",
+    "pytest>=8.3.4",
+    "pytest-cov>=6.0.0",
+    "pytest-mock>=3.14.0",
+    "setuptools>=75.8.0",
+]
+
+[project.urls]
+repository = "https://github.com/houseman/tripswitch"
+
+[build-system]
+requires = ["setuptools"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools]
+include-package-data = true
+license-files = []
+
+[tool.setuptools.packages.find]
+where = ["src"]
+include = ["tripswitch*"]
+namespaces = false
+
+[tool.setuptools.package-data]
+"tripswitch" = ["py.typed"]
+
+[tool.ruff]
+src = ["src"]
+line-length = 109       # Black + 21 :D
+target-version = "py39"
+
+[tool.ruff.lint]
+extend-select = ["ALL"]
+ignore = [
+    "COM812", # rule may cause conflicts when used with the formatter
+    "D203",   # incompatible with D211
+    "D213",   # Incompatible with D212
+]
+
+[tool.ruff.lint.per-file-ignores]
+"**/tests/*" = [
+    # Allow...
+    "S101",    # use of assert
+    "SLF001",  # access to private attributes
+    "ANN001",  # missing type annotation for function parameters
+    "ANN201",  # missing return type annotation
+    "PLR2004", # use of unnamed numerical constants ("magic") values in comparisons
+]
+
+[tool.ruff.lint.isort]
+required-imports = ["from __future__ import annotations"]
+
+[tool.ruff.lint.pydocstyle]
+convention = "numpy"
+
+[tool.mypy]
+files = ["src"]
+exclude = ["build"]
+python_version = "3.9"
+ignore_errors = false
+
+[[tool.mypy.overrides]]
+module = ["circuitbreaker.*"]
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = ["pymemcache.*"]
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = ["tests.*"]
+ignore_errors = true
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+testpaths = ["tests"]
+addopts = "--cov --cov-report html --cov-report term-missing --cov-report xml --no-cov-on-fail --cov-fail-under 100"
+
+[tool.coverage.run]
+branch = true
+source = ["src"]
+omit = ["tests/*"]
+
+[tool.coverage.report]
+fail_under = 100
+skip_empty = true
+show_missing = true
+exclude_lines = [
+    "pragma: no cover",
+    "if TYPE_CHECKING:",
+    "if t.TYPE_CHECKING:",
+    "pass",
+    "@abstractmethod",
+    "raise NotImplementedError()",
+]
