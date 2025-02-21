@@ -1,0 +1,36 @@
+name: Run Continuous Integration Checks
+
+on:
+  push:
+
+jobs:
+  ci-checks:
+    name: python
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+        python-version: ["3.9", "3.10", "3.11", "3.12", "3.13"]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Install dependencies for Python ${{ matrix.python-version }} on ${{ matrix.os }}
+        run: uv sync --all-extras --dev
+
+      - name: Run format check for Python ${{ matrix.python-version }} on ${{ matrix.os }}
+        run: uv run ruff format --check
+
+      - name: Run linting check for Python ${{ matrix.python-version }} on ${{ matrix.os }}
+        run: uv run ruff check
+
+      - name: Run type check for Python ${{ matrix.python-version }} on ${{ matrix.os }}
+        run: uv run mypy
+
+      - name: Run tests for Python ${{ matrix.python-version }} on ${{ matrix.os }}
+        run: uv run pytest

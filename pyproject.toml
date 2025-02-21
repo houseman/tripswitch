@@ -1,8 +1,8 @@
 [project]
 name = "tripswitch"
-version = "0.1.0"
+version = "0.0.1dev1"
 description = "A Python Circuit Breaker implementation"
-readme = "README.md"
+readme = { file = "README.md", content-type = "text/markdown" }
 license = { file = "LICENSE" }
 requires-python = ">=3.9"
 authors = [{ name = "Scott Houseman", email = "scott@houseman.co.za" }]
@@ -21,10 +21,23 @@ classifiers = [
     "Topic :: Software Development :: Libraries :: Python Modules",
     "Typing :: Typed",
 ]
-dependencies = [
-    "circuitbreaker>=2.0.0",
-    "redis>=5.2.1",
-    "typing-extensions>=4.12.2",
+dependencies = ["circuitbreaker>=2.0.0", "typing-extensions>=4.12.2"]
+
+[project.optional-dependencies]
+redis = ["redis>=5.2.1"]
+valkey = ["valkey>=6.1.0"]
+memcache = ["pymemcache>=4.0.0"]
+all = ["redis>=5.2.1", "valkey>=6.1.0", "pymemcache>=4.0.0"]
+
+[dependency-groups]
+dev = [
+    "ruff>=0.9.5",
+    "faker>=36.1.0",
+    "mypy>=1.15.0",
+    "pytest>=8.3.4",
+    "pytest-cov>=6.0.0",
+    "pytest-mock>=3.14.0",
+    "setuptools>=75.8.0",
 ]
 
 [project.urls]
@@ -36,11 +49,15 @@ build-backend = "setuptools.build_meta"
 
 [tool.setuptools]
 include-package-data = true
+license-files = []
 
 [tool.setuptools.packages.find]
 where = ["src"]
 include = ["tripswitch*"]
 namespaces = false
+
+[tool.setuptools.package-data]
+"tripswitch" = ["py.typed"]
 
 [tool.ruff]
 src = ["src"]
@@ -111,15 +128,3 @@ exclude_lines = [
     "@abstractmethod",
     "raise NotImplementedError()",
 ]
-
-[dependency-groups]
-dev = [
-    "faker>=36.1.0",
-    "mypy>=1.15.0",
-    "pytest>=8.3.4",
-    "pytest-cov>=6.0.0",
-    "pytest-mock>=3.14.0",
-]
-redis = ["redis>=5.2.1"]
-valkey = ["valkey>=6.1.0"]
-memcache = ["pymemcache>=4.0.0"]

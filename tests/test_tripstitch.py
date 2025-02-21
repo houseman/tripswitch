@@ -10,7 +10,7 @@ import redis
 import valkey
 from pymemcache.client import base as memcache
 
-from tripswitch import providers
+from tripswitch import backend
 from tripswitch.tripswitch import CircuitStatus
 
 
@@ -56,7 +56,7 @@ def test_init__valkey(mocker, faker, fallback_function):
         "failure_count": "0",
     }
 
-    provider = providers.ValkeyProvider(client=mock_client)
+    provider = backend.ValkeyProvider(client=mock_client)
 
     mock_expected_exceptions = (mocker.Mock(), mocker.Mock())
 
@@ -101,7 +101,7 @@ def test_init__memcache(mocker, faker, fallback_function):
             }
         ),
     ]
-    provider = providers.MemcacheProvider(client=mock_client)
+    provider = backend.MemcacheProvider(client=mock_client)
 
     mock_expected_exceptions = (mocker.Mock(), mocker.Mock())
 
@@ -138,7 +138,7 @@ def test_init__provider_backend_state_is_set(mocker, faker):
         "failure_count": "100",
     }
 
-    provider = providers.RedisProvider(client=mock_client)
+    provider = backend.RedisProvider(client=mock_client)
 
     instance = Tripswitch(mock_name, provider=provider, failure_threshold=50)
 
@@ -162,7 +162,7 @@ def test_init__provider_backend_state_not_set(mocker, faker):
     mock_client = mocker.Mock(spec=redis.Redis)
     mock_client.hgetall.side_effect = [{}, {"status": "closed", "last_failure": None, "failure_count": "0"}]
 
-    provider = providers.RedisProvider(client=mock_client)
+    provider = backend.RedisProvider(client=mock_client)
 
     instance = Tripswitch(mock_name, provider=provider, failure_threshold=50)
 
@@ -209,7 +209,7 @@ def test_context_manager__closed__error__updates_backend__opens_circuit(mocker, 
 
     instance = Tripswitch(
         mock_name,
-        provider=providers.RedisProvider(client=mock_client),
+        provider=backend.RedisProvider(client=mock_client),
         failure_threshold=100,
         expected_exception=(MockError,),
     )
@@ -248,7 +248,7 @@ def test_context_manager__closed__non_error__updates_backend__circuit_stays_clos
 
     instance = Tripswitch(
         mock_name,
-        provider=providers.RedisProvider(client=mock_client),
+        provider=backend.RedisProvider(client=mock_client),
         failure_threshold=100,
         expected_exception=(MockError,),
     )
@@ -287,7 +287,7 @@ def test_context_manager__open__non_error__updates_backend__circuit_closes(mocke
 
     instance = Tripswitch(
         mock_name,
-        provider=providers.RedisProvider(client=mock_client),
+        provider=backend.RedisProvider(client=mock_client),
         failure_threshold=100,
         expected_exception=(MockError,),
     )
@@ -317,7 +317,7 @@ def test_monitor_decorator(mocker, mock_error):
 
     class MyTripswitch(Tripswitch):
         EXPECTED_EXCEPTIONS = (MockError,)
-        BACKEND = providers.RedisProvider(mock_client)
+        BACKEND = backend.RedisProvider(mock_client)
         FAILURE_THRESHOLD = 1
 
     @monitor(cls=MyTripswitch)

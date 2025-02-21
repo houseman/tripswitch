@@ -12,11 +12,11 @@ import circuitbreaker as cb
 if TYPE_CHECKING:
     from types import TracebackType
 
-    from .providers import BackedProvider
+    from .backend import BackedProvider
 
 
 @dataclass
-class BackendState:
+class CircuitState:
     """A dataclass for storing the state of a circuit breaker."""
 
     status: CircuitStatus
@@ -51,7 +51,7 @@ class Tripswitch(cb.CircuitBreaker):
         ----------
         name : str
             The name of the circuit breaker instance.
-        provider: BackedProvider | None
+        provider : BackedProvider | None
             A backend provider for the circuit breaker.
 
         Returns
@@ -131,7 +131,7 @@ class Tripswitch(cb.CircuitBreaker):
 
         self.provider.set(
             name=self.name,
-            state=BackendState(
+            state=CircuitState(
                 status=CircuitStatus(self.state),
                 last_failure=self.last_failure,
                 failure_count=self.failure_count,
