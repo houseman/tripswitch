@@ -6,7 +6,7 @@ stop-redis:
 
 .PHONY: start-valkey stop-valkey
 start-valkey:
-	docker run --name valkey-it --detach --publish 6379:6379 valkey
+	docker run --name valkey-it --detach --publish 6379:6379 valkey/valkey
 
 stop-valkey:
 	docker stop valkey-it
