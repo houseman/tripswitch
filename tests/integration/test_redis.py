@@ -10,7 +10,7 @@ from .errors import FooError
 
 
 @pytest.mark.parametrize("decode_responses", [True, False])
-def test_redis(decode_responses):
+def test_redis__closed_circuit__opens_past_threshold(decode_responses):
     """Integration tests for RedisProvider."""
     from redis import Redis
 
@@ -24,21 +24,19 @@ def test_redis(decode_responses):
 
     tripswitch = Tripswitch("foo", backend=backend, expected_exception=FooError, failure_threshold=10)
 
-    def foo() -> int:
-        for i in range(21):
-            if i < 10:
-                pass
-            else:
-                # The circuit will open after 10 iterations.
-                raise FooError("Boom!")  # noqa: EM101
-        return i
+    def foo(i: int) -> None:
+        if i <= 10:
+            pass
+        else:
+            raise FooError("Boom!")  # noqa: EM101
 
-    with tripswitch:
-        output = foo()
-        assert output == 20
+    for i in range(26):
+        with tripswitch:
+            foo(i)
 
+    assert i == 25
     assert backend.get("foo") == CircuitState(
-        status=CircuitStatus.CLOSED,  # TODO: This should be OPEN
+        status=CircuitStatus.OPEN,
         last_failure=FooError("Boom!"),
-        failure_count=1,  # TODO: This should be 10
+        failure_count=15,
     )
