@@ -5,7 +5,7 @@ from __future__ import annotations
 import pickle
 from abc import ABCMeta, abstractmethod
 from dataclasses import asdict
-from typing import Generic, TypeVar, cast
+from typing import Generic, TypeVar, Union, cast
 
 import redis
 import valkey
@@ -124,15 +124,11 @@ class _BaseHashKeyBackendProvider(_BaseBackendProvider[HashClientT]):
         StateNotFoundError
             If no state exists.
         """
-        if not (state := cast(dict, self._client.hgetall(name))):
+        if not (state := cast(dict[Union[bytes, str], Union[bytes, str]], self._client.hgetall(name))):
             raise StateNotFoundError(name=name)
 
         # Return the persisted state.
-        return CircuitState(
-            status=CircuitStatus(state["status"]),
-            last_failure=state["last_failure"],
-            failure_count=int(state["failure_count"]),
-        )
+        return CircuitState.deserialize(state)
 
     def set(self, name: str, state: CircuitState) -> None:
         """Update the backend.
@@ -148,7 +144,7 @@ class _BaseHashKeyBackendProvider(_BaseBackendProvider[HashClientT]):
         -------
         None
         """
-        self._client.hset(name, mapping=asdict(state))
+        self._client.hset(name, mapping=state.serialize())
 
 
 class RedisProvider(_BaseHashKeyBackendProvider[redis.Redis]):

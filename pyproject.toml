@@ -70,6 +70,9 @@ ignore = [
     "COM812", # rule may cause conflicts when used with the formatter
     "D203",   # incompatible with D211
     "D213",   # Incompatible with D212
+    "FIX002", # Allow `TODO` comments
+    "TD003",  # Don't require a issue link for TODO comments
+    "TD002",  # Don't require am author name for TODO comments
 ]
 
 [tool.ruff.lint.per-file-ignores]
@@ -108,7 +111,7 @@ ignore_errors = true
 
 [tool.pytest.ini_options]
 pythonpath = ["src"]
-testpaths = ["tests"]
+testpaths = ["tests/unit", "tests/integration"]
 addopts = "--cov --cov-report html --cov-report term-missing --cov-report xml --no-cov-on-fail --cov-fail-under 100"
 
 [tool.coverage.run]

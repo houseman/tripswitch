@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import base64
 import functools
+import pickle
 from dataclasses import dataclass
 from enum import Enum
 from typing import TYPE_CHECKING, Any, Callable
@@ -22,6 +24,46 @@ class CircuitState:
     status: CircuitStatus
     last_failure: Exception | None
     failure_count: int
+
+    def serialize(self) -> dict[str, str]:
+        """Return the state as a dictionary containing serialized values.
+
+        Returns
+        -------
+        dict
+            The state as a dictionary.
+        """
+        return {
+            "status": self.status.value,
+            "last_failure": base64.b64encode(pickle.dumps(self.last_failure)).decode("utf-8"),
+            "failure_count": str(self.failure_count),
+        }
+
+    @classmethod
+    def deserialize(cls, state: dict[str | bytes, str | bytes]) -> CircuitState:
+        """Load the state from a dictionary containing serialised values.
+
+        Parameters
+        ----------
+        state : dict
+            The state as a dictionary.
+
+        Returns
+        -------
+            None
+        """
+        # This is necessary if e.g. Redis is not configured with `decode_responses=True`
+        decoded_state: dict[str, str] = {
+            (key.decode("utf-8") if isinstance(key, bytes) else key): (
+                value.decode("utf-8") if isinstance(value, bytes) else value
+            )
+            for key, value in state.items()
+        }
+        return cls(
+            status=CircuitStatus(decoded_state["status"]),
+            last_failure=pickle.loads(base64.b64decode(decoded_state["last_failure"])),  # noqa: S301
+            failure_count=int(decoded_state["failure_count"]),
+        )
 
 
 class CircuitStatus(Enum):

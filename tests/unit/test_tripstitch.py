@@ -11,7 +11,7 @@ import valkey
 from pymemcache.client import base as memcache
 
 from tripswitch import backend as be
-from tripswitch.tripswitch import CircuitStatus
+from tripswitch.tripswitch import CircuitState, CircuitStatus
 
 
 class MockError(Exception):
@@ -50,11 +50,9 @@ def test_init__valkey(mocker, faker, fallback_function):
 
     mock_name = faker.word()
     mock_client = mocker.Mock(spec=valkey.Valkey)
-    mock_client.hgetall.return_value = {
-        "status": "closed",
-        "last_failure": None,
-        "failure_count": "0",
-    }
+    mock_client.hgetall.return_value = CircuitState(
+        status=CircuitStatus.CLOSED, last_failure=None, failure_count=0
+    ).serialize()
 
     backend = be.ValkeyProvider(client=mock_client)
 
@@ -132,11 +130,9 @@ def test_init__provider_backend_state_is_set(mocker, faker):
 
     mock_name = faker.word()
     mock_client = mocker.Mock(spec=redis.Redis)
-    mock_client.hgetall.return_value = {
-        "status": "open",
-        "last_failure": ValueError,
-        "failure_count": "100",
-    }
+    mock_client.hgetall.return_value = CircuitState(
+        status=CircuitStatus.OPEN, last_failure=ValueError, failure_count=100
+    ).serialize()
 
     backend = be.RedisProvider(client=mock_client)
 
@@ -160,7 +156,10 @@ def test_init__provider_backend_state_not_set(mocker, faker):
 
     mock_name = faker.word()
     mock_client = mocker.Mock(spec=redis.Redis)
-    mock_client.hgetall.side_effect = [{}, {"status": "closed", "last_failure": None, "failure_count": "0"}]
+    mock_client.hgetall.side_effect = [
+        {},
+        CircuitState(status=CircuitStatus.CLOSED, last_failure=None, failure_count=0).serialize(),
+    ]
 
     backend = be.RedisProvider(client=mock_client)
 
@@ -201,11 +200,9 @@ def test_context_manager__closed__error__updates_backend__opens_circuit(mocker, 
 
     mock_name = faker.word()
     mock_client = mocker.Mock(spec=redis.Redis)
-    mock_client.hgetall.return_value = {
-        "status": "closed",
-        "last_failure": None,
-        "failure_count": "100",
-    }
+    mock_client.hgetall.return_value = CircuitState(
+        status=CircuitStatus.CLOSED, last_failure=None, failure_count=100
+    ).serialize()
 
     instance = Tripswitch(
         mock_name,
@@ -222,7 +219,9 @@ def test_context_manager__closed__error__updates_backend__opens_circuit(mocker, 
 
     mock_client.hset.assert_called_once_with(
         mock_name,
-        mapping={"status": CircuitStatus.OPEN, "last_failure": instance.last_failure, "failure_count": 101},
+        mapping=CircuitState(
+            status=CircuitStatus.OPEN, last_failure=instance.last_failure, failure_count=101
+        ).serialize(),
     )
 
 
@@ -240,11 +239,9 @@ def test_context_manager__closed__non_error__updates_backend__circuit_stays_clos
 
     mock_name = faker.word()
     mock_client = mocker.Mock(spec=redis.Redis)
-    mock_client.hgetall.return_value = {
-        "status": "closed",
-        "last_failure": None,
-        "failure_count": "0",
-    }
+    mock_client.hgetall.return_value = CircuitState(
+        status=CircuitStatus.CLOSED, last_failure=None, failure_count=0
+    ).serialize()
 
     instance = Tripswitch(
         mock_name,
@@ -261,7 +258,7 @@ def test_context_manager__closed__non_error__updates_backend__circuit_stays_clos
 
     mock_client.hset.assert_called_once_with(
         mock_name,
-        mapping={"status": CircuitStatus.CLOSED, "last_failure": None, "failure_count": 0},
+        mapping=CircuitState(status=CircuitStatus.CLOSED, last_failure=None, failure_count=0).serialize(),
     )
 
 
@@ -279,11 +276,9 @@ def test_context_manager__open__non_error__updates_backend__circuit_closes(mocke
 
     mock_name = faker.word()
     mock_client = mocker.Mock(spec=redis.Redis)
-    mock_client.hgetall.return_value = {
-        "status": "open",
-        "last_failure": mock_error,
-        "failure_count": "101",
-    }
+    mock_client.hgetall.return_value = CircuitState(
+        status=CircuitStatus.OPEN, last_failure=mock_error, failure_count=101
+    ).serialize()
 
     instance = Tripswitch(
         mock_name,
@@ -300,7 +295,7 @@ def test_context_manager__open__non_error__updates_backend__circuit_closes(mocke
 
     mock_client.hset.assert_called_once_with(
         mock_name,
-        mapping={"status": CircuitStatus.CLOSED, "last_failure": None, "failure_count": 0},
+        mapping=CircuitState(status=CircuitStatus.CLOSED, last_failure=None, failure_count=0).serialize(),
     )
 
 
@@ -309,11 +304,9 @@ def test_monitor_decorator(mocker, mock_error):
     from tripswitch import Tripswitch, monitor
 
     mock_client = mocker.Mock(spec=redis.Redis)
-    mock_client.hgetall.return_value = {
-        "status": "closed",
-        "last_failure": None,
-        "failure_count": "0",
-    }
+    mock_client.hgetall.return_value = CircuitState(
+        status=CircuitStatus.CLOSED, last_failure=None, failure_count=0
+    ).serialize()
 
     class MyTripswitch(Tripswitch):
         EXPECTED_EXCEPTIONS = (MockError,)
@@ -328,5 +321,7 @@ def test_monitor_decorator(mocker, mock_error):
 
     mock_client.hset.assert_called_once_with(
         "foo",
-        mapping={"status": CircuitStatus.OPEN, "last_failure": mock_error, "failure_count": 1},
+        mapping=CircuitState(
+            status=CircuitStatus.OPEN, last_failure=mock_error, failure_count=1
+        ).serialize(),
     )
