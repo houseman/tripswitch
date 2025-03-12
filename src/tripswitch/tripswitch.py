@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import base64
+import datetime
 import functools
 import pickle
 from dataclasses import dataclass
@@ -24,6 +25,7 @@ class CircuitState:
     status: CircuitStatus
     last_failure: Exception | None
     failure_count: int
+    timestamp: int
 
     def serialize(self) -> dict[str, str]:
         """Return the state as a dictionary containing serialized values.
@@ -37,6 +39,7 @@ class CircuitState:
             "status": self.status.value,
             "last_failure": base64.b64encode(pickle.dumps(self.last_failure)).decode("utf-8"),
             "failure_count": str(self.failure_count),
+            "timestamp": str(self.timestamp),
         }
 
     @classmethod
@@ -63,15 +66,16 @@ class CircuitState:
             status=CircuitStatus(decoded_state["status"]),
             last_failure=pickle.loads(base64.b64decode(decoded_state["last_failure"])),  # noqa: S301
             failure_count=int(decoded_state["failure_count"]),
+            timestamp=int(decoded_state["timestamp"]),
         )
 
 
 class CircuitStatus(Enum):
     """The possible status of a circuit breaker."""
 
-    CLOSED = cb.STATE_CLOSED
-    OPEN = cb.STATE_OPEN
-    HALF_OPEN = cb.STATE_HALF_OPEN
+    CLOSED = cb.STATE_CLOSED  # Circuit is closed, calls are allowed.
+    OPEN = cb.STATE_OPEN  # Circuit is open, calls are blocked.
+    HALF_OPEN = cb.STATE_HALF_OPEN  # Circuit is half open, next call will be passed through.
 
 
 class Tripswitch(cb.CircuitBreaker):
@@ -104,19 +108,34 @@ class Tripswitch(cb.CircuitBreaker):
         super().__init__(*args, **kwargs)
         self._name = name
         self._backed = backend if backend is not None else self.BACKEND
-        self.init_from_backend()
+        self._timestamp = 0
 
-    def init_from_backend(self) -> None:
-        """Initialize the circuit breaker from the backend.
+        # As this class instance is being initialized, we need to sync an initial state.
+        self.sync(
+            state=CircuitState(
+                status=CircuitStatus.CLOSED,
+                last_failure=None,
+                failure_count=0,
+                timestamp=self.timestamp,
+            )
+        )
+
+    def sync(self, state: CircuitState) -> None:
+        """Synchronize the given state to the backend.
 
         Returns
         -------
             None
         """
-        state = self.backend.get_or_init(self._name)
-        self._state = state.status.value
-        self._last_failure = state.last_failure
-        self._failure_count = state.failure_count
+        self._set_timestamp()
+        backend_state = self.backend.get_or_init(self._name, state)
+        if state.timestamp > backend_state.timestamp:
+            self.backend.set(self._name, state)
+            return
+
+        self._state = backend_state.status.value
+        self._last_failure = backend_state.last_failure
+        self._failure_count = backend_state.failure_count
 
     @property
     def backend(self) -> Backend:
@@ -143,6 +162,37 @@ class Tripswitch(cb.CircuitBreaker):
             The failure threshold for the circuit breaker.
         """
         return self._failure_threshold
+
+    @property
+    def timestamp(self) -> int:
+        """Return the timestamp for the circuit breaker.
+
+        This timestamp includes microseconds, as an integer.
+
+        Returns
+        -------
+        float
+            The timestamp for the circuit breaker.
+        """
+        return self._timestamp
+
+    def _set_timestamp(self) -> None:
+        """Set the timestamp for the circuit breaker.
+
+        This sets the timestamp to the current timestamp including microseconds, as an integer.
+
+        Returns
+        -------
+        None
+        """
+        self._timestamp = int(datetime.datetime.now(tz=None).timestamp() * 1_000_000)
+
+    def __enter__(self) -> None:
+        """Enter the circuit breaker context manager.
+
+        This refreshed the state from backend before entering the context manager.
+        """
+        return super().__enter__()
 
     def __exit__(
         self,
@@ -171,13 +221,13 @@ class Tripswitch(cb.CircuitBreaker):
         """
         super().__exit__(exc_type, exc_value, traceback)
 
-        self.backend.set(
-            name=self.name,
+        self.sync(
             state=CircuitState(
                 status=CircuitStatus(self.state),
                 last_failure=self.last_failure,
                 failure_count=self.failure_count,
-            ),
+                timestamp=self.timestamp,
+            )
         )
 
         if exc_type is not None:

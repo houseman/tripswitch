@@ -20,7 +20,9 @@ def test_valkey(decode_responses):
     backend = ValkeyProvider(client=client)
 
     # Force init backend to empty state
-    backend.set("foo", CircuitState(status=CircuitStatus.CLOSED, last_failure=None, failure_count=0))
+    backend.set(
+        "foo", CircuitState(status=CircuitStatus.CLOSED, last_failure=None, failure_count=0, timestamp=0)
+    )
 
     tripswitch = Tripswitch("foo", backend=backend, expected_exception=FooError, failure_threshold=10)
 
@@ -34,9 +36,11 @@ def test_valkey(decode_responses):
         with tripswitch:
             foo(i)
 
+    output = backend.get("foo")
     assert i == 25
-    assert backend.get("foo") == CircuitState(
+    assert output == CircuitState(
         status=CircuitStatus.OPEN,
         last_failure=FooError("Boom!"),
         failure_count=15,
+        timestamp=output.timestamp,
     )

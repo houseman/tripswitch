@@ -1,25 +1,32 @@
 .PHONY: start-redis stop-redis
 start-redis:
-	docker run --name redis-it --detach --publish 6379:6379 redis
+	-docker rm --force redis || true
+	docker run --name redis --detach --publish 6379:6379 redis
 stop-redis:
-	docker stop redis-it
+	docker stop redis
 
 .PHONY: start-valkey stop-valkey
 start-valkey:
-	docker run --name valkey-it --detach --publish 6379:6379 valkey/valkey
+	-docker rm --force valkey || true
+	docker run --name valkey --detach --publish 6379:6379 valkey/valkey
 
 stop-valkey:
-	docker stop valkey-it
+	docker stop valkey
 
 .PHONY: start-memcached stop-memcached
 start-memcached:
-	docker run --name memcached-it --detach --publish 11211:11211 memcached
+	-docker rm --force memcached || true
+	docker run --name memcached --detach --publish 11211:11211 memcached
 
 stop-memcached:
-	docker stop memcached-it
+	docker stop memcached
+
+.PHONY: venv
+venv:
+	uv venv --allow-existing --python=python3.9
 
 .PHONY: install
-install:
+install: venv
 	uv sync --all-extras --dev
 	uv pip install --upgrade --editable .
 
@@ -31,4 +38,4 @@ lint: install
 
 .PHONY: test
 test: install
-	uv run pytest
+	uv run pytest -vv
