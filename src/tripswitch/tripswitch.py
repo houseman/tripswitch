@@ -131,12 +131,14 @@ class Tripswitch(cb.CircuitBreaker):
         -------
             None
         """
-        self._set_timestamp()
         backend_state = self.backend.get_or_init(self._name, state)
-        if state.timestamp > backend_state.timestamp:
+        # If the current state has a timestamp and is newer than the backend state,
+        # update the backend to this instance's state.
+        if 0 < state.timestamp > backend_state.timestamp:
             self.backend.set(self._name, state)
             return
 
+        # Update the instance state to the backend state.
         self._state = backend_state.status.value
         self._last_failure = backend_state.last_failure
         self._failure_count = backend_state.failure_count
@@ -180,10 +182,10 @@ class Tripswitch(cb.CircuitBreaker):
         """
         return self._timestamp
 
-    def _set_timestamp(self) -> None:
+    def _update_timestamp(self) -> None:
         """Set the timestamp for the circuit breaker.
 
-        This sets the timestamp to the current timestamp including microseconds, as an integer.
+        This sets the timestamp to the current time, including microseconds, as an integer.
 
         Returns
         -------
@@ -223,7 +225,10 @@ class Tripswitch(cb.CircuitBreaker):
         bool
             True if no error occurred, False otherwise.
         """
+        # First call the superclass __exit__ method, as this updates the state.
         super().__exit__(exc_type, exc_value, traceback)
+
+        self._update_timestamp()
 
         self.sync(
             state=CircuitState(

@@ -329,7 +329,7 @@ def test_monitor_decorator(mocker, mock_error):
 
     mock_client = mocker.Mock(spec=redis.Redis)
     mock_client.hgetall.return_value = CircuitState(
-        status=CircuitStatus.CLOSED, last_failure=None, failure_count=0, timestamp=0
+        status=CircuitStatus.CLOSED, last_failure=None, failure_count=0, timestamp=1
     ).serialize()
 
     class MyTripswitch(Tripswitch):
@@ -343,6 +343,7 @@ def test_monitor_decorator(mocker, mock_error):
 
     foo()
 
+    mock_client.hgetall.assert_has_calls([mocker.call("foo"), mocker.call("foo")])
     mock_client.hset.assert_called_once_with(
         "foo",
         mapping=CircuitState(
