@@ -8,14 +8,18 @@ import functools
 import pickle
 from dataclasses import dataclass
 from enum import Enum
-from typing import TYPE_CHECKING, Any, Callable
+from typing import TYPE_CHECKING, Callable, TypeVar
 
 import circuitbreaker as cb
+from typing_extensions import ParamSpec
 
 if TYPE_CHECKING:
     from types import TracebackType
 
     from .backend import Backend
+
+T = TypeVar("T")
+P = ParamSpec("P")
 
 
 @dataclass
@@ -236,7 +240,7 @@ class Tripswitch(cb.CircuitBreaker):
         return True
 
 
-def monitor(*, cls: type[Tripswitch] = Tripswitch) -> Callable[..., Any]:
+def monitor(*, cls: type[Tripswitch] = Tripswitch) -> Callable[[Callable[P, T]], Callable[P, T]]:
     """Return a Tripswitch circuit breaker decorator.
 
     Parameters
@@ -246,13 +250,13 @@ def monitor(*, cls: type[Tripswitch] = Tripswitch) -> Callable[..., Any]:
 
     Returns
     -------
-    Callable[..., Any]
+    Callable[P, T]
         A decorator for the circuit breaker.
     """
 
-    def decorator(func: Callable[..., Any]) -> Callable[..., Any]:
+    def decorator(func: Callable[P, T]) -> Callable[P, T]:
         @functools.wraps(func)
-        def wrapper(*args: tuple, **kwargs: dict) -> Callable[..., Any]:
+        def wrapper(*args: P.args, **kwargs: P.kwargs) -> T:
             return cb.circuit(cls=cls, name=func.__name__)(func)(*args, **kwargs)
 
         return wrapper
