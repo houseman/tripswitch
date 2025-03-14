@@ -39,6 +39,7 @@ dev = [
     "pytest-mock>=3.14.0",
     "setuptools>=75.8.0",
     "freezegun>=1.5.1",
+    "pytest-lazy-fixtures>=1.1.2",
 ]
 
 [project.urls]
@@ -113,7 +114,6 @@ ignore_errors = true
 [tool.pytest.ini_options]
 pythonpath = ["src"]
 testpaths = ["tests/unit", "tests/integration"]
-addopts = "--cov --cov-report html --cov-report term-missing --cov-report xml --no-cov-on-fail --cov-fail-under 100"
 
 [tool.coverage.run]
 branch = true

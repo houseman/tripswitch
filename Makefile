@@ -65,10 +65,13 @@ test: unit-test integration-test
 
 ## Run unit tests
 unit-test: install
-	uv run pytest -vv tests/unit
+	uv run pytest -vv --cov --cov-report html \
+		--cov-report term-missing --cov-report xml \
+		--no-cov-on-fail --cov-fail-under 100 \
+		tests/unit
 
 ## Run integration tests
-integration-test: install start-redis
+integration-test: install start-redis start-memcached
 	uv run pytest -vv tests/integration
 
 # ================ HELP ================
