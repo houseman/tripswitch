@@ -44,7 +44,7 @@ class _AbstractBackedProvider(Generic[ClientT], metaclass=ABCMeta):
     def __init__(self, client: ClientT) -> None: ...
 
     @abstractmethod
-    def get_or_init(self, name: str) -> CircuitState: ...
+    def get_or_init(self, name: str, state: CircuitState) -> CircuitState: ...
 
     @abstractmethod
     def get(self, name: str) -> CircuitState: ...
@@ -70,7 +70,7 @@ class _BaseBackendProvider(_AbstractBackedProvider[ClientT]):
         """
         self._client: ClientT = client
 
-    def get_or_init(self, name: str) -> CircuitState:
+    def get_or_init(self, name: str, state: CircuitState) -> CircuitState:
         """Initialize the backend.
 
         Return state if this is set, else initialize the backend.
@@ -79,6 +79,8 @@ class _BaseBackendProvider(_AbstractBackedProvider[ClientT]):
         ----------
         name : str
             The name of the circuit breaker instance.
+        state : CircuitState
+            The initial state of the circuit
 
         Returns
         -------
@@ -90,14 +92,7 @@ class _BaseBackendProvider(_AbstractBackedProvider[ClientT]):
             return self.get(name)
         except StateNotFoundError:
             # Persist a new state to the backend.
-            self.set(
-                name,
-                CircuitState(
-                    status=CircuitStatus.CLOSED,
-                    last_failure=None,
-                    failure_count=0,
-                ),
-            )
+            self.set(name, state)
 
             # Refresh the state from the backend.
             return self.get(name)
@@ -185,6 +180,7 @@ class MemcacheProvider(_BaseBackendProvider[Memcache]):
             status=CircuitStatus(state["status"]),
             last_failure=state["last_failure"],
             failure_count=int(state["failure_count"]),
+            timestamp=int(state["timestamp"]),
         )
 
     def set(self, name: str, state: CircuitState) -> None:

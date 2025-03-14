@@ -38,6 +38,8 @@ dev = [
     "pytest-cov>=6.0.0",
     "pytest-mock>=3.14.0",
     "setuptools>=75.8.0",
+    "freezegun>=1.5.1",
+    "pytest-lazy-fixtures>=1.1.2",
 ]
 
 [project.urls]
@@ -73,6 +75,7 @@ ignore = [
     "FIX002", # Allow `TODO` comments
     "TD003",  # Don't require a issue link for TODO comments
     "TD002",  # Don't require am author name for TODO comments
+    "DTZ005", # Allow `tz=None` to be passed to `datetime.datetime.now()`
 ]
 
 [tool.ruff.lint.per-file-ignores]
@@ -94,7 +97,6 @@ convention = "numpy"
 [tool.mypy]
 files = ["src"]
 exclude = ["build"]
-python_version = "3.9"
 ignore_errors = false
 
 [[tool.mypy.overrides]]
@@ -112,7 +114,6 @@ ignore_errors = true
 [tool.pytest.ini_options]
 pythonpath = ["src"]
 testpaths = ["tests/unit", "tests/integration"]
-addopts = "--cov --cov-report html --cov-report term-missing --cov-report xml --no-cov-on-fail --cov-fail-under 100"
 
 [tool.coverage.run]
 branch = true

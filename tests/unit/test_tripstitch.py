@@ -8,6 +8,7 @@ import pickle
 import pytest
 import redis
 import valkey
+from freezegun import freeze_time
 from pymemcache.client import base as memcache
 
 from tripswitch import backend as be
@@ -51,7 +52,7 @@ def test_init__valkey(mocker, faker, fallback_function):
     mock_name = faker.word()
     mock_client = mocker.Mock(spec=valkey.Valkey)
     mock_client.hgetall.return_value = CircuitState(
-        status=CircuitStatus.CLOSED, last_failure=None, failure_count=0
+        status=CircuitStatus.CLOSED, last_failure=None, failure_count=0, timestamp=0
     ).serialize()
 
     backend = be.ValkeyProvider(client=mock_client)
@@ -96,6 +97,7 @@ def test_init__memcache(mocker, faker, fallback_function):
                 "status": "closed",
                 "last_failure": None,
                 "failure_count": "0",
+                "timestamp": "0",
             }
         ),
     ]
@@ -131,7 +133,7 @@ def test_init__provider_backend_state_is_set(mocker, faker):
     mock_name = faker.word()
     mock_client = mocker.Mock(spec=redis.Redis)
     mock_client.hgetall.return_value = CircuitState(
-        status=CircuitStatus.OPEN, last_failure=ValueError, failure_count=100
+        status=CircuitStatus.OPEN, last_failure=ValueError, failure_count=100, timestamp=0
     ).serialize()
 
     backend = be.RedisProvider(client=mock_client)
@@ -158,7 +160,9 @@ def test_init__provider_backend_state_not_set(mocker, faker):
     mock_client = mocker.Mock(spec=redis.Redis)
     mock_client.hgetall.side_effect = [
         {},
-        CircuitState(status=CircuitStatus.CLOSED, last_failure=None, failure_count=0).serialize(),
+        CircuitState(
+            status=CircuitStatus.CLOSED, last_failure=None, failure_count=0, timestamp=0
+        ).serialize(),
     ]
 
     backend = be.RedisProvider(client=mock_client)
@@ -186,6 +190,7 @@ def test_provider__none(faker):
         Tripswitch(mock_name)
 
 
+@freeze_time("2025-03-13T00:45:53.275590")
 def test_context_manager__closed__error__updates_backend__opens_circuit(mocker, faker, mock_error):
     """Test the update to backend.
 
@@ -201,7 +206,7 @@ def test_context_manager__closed__error__updates_backend__opens_circuit(mocker, 
     mock_name = faker.word()
     mock_client = mocker.Mock(spec=redis.Redis)
     mock_client.hgetall.return_value = CircuitState(
-        status=CircuitStatus.CLOSED, last_failure=None, failure_count=100
+        status=CircuitStatus.CLOSED, last_failure=None, failure_count=100, timestamp=0
     ).serialize()
 
     instance = Tripswitch(
@@ -220,11 +225,15 @@ def test_context_manager__closed__error__updates_backend__opens_circuit(mocker, 
     mock_client.hset.assert_called_once_with(
         mock_name,
         mapping=CircuitState(
-            status=CircuitStatus.OPEN, last_failure=instance.last_failure, failure_count=101
+            status=CircuitStatus.OPEN,
+            last_failure=instance.last_failure,
+            failure_count=101,
+            timestamp=1741826753275590,
         ).serialize(),
     )
 
 
+@freeze_time("2025-03-13T00:45:53.275590")
 def test_context_manager__closed__non_error__updates_backend__circuit_stays_closed(mocker, faker):
     """Test the update to backend.
 
@@ -240,7 +249,7 @@ def test_context_manager__closed__non_error__updates_backend__circuit_stays_clos
     mock_name = faker.word()
     mock_client = mocker.Mock(spec=redis.Redis)
     mock_client.hgetall.return_value = CircuitState(
-        status=CircuitStatus.CLOSED, last_failure=None, failure_count=0
+        status=CircuitStatus.CLOSED, last_failure=None, failure_count=0, timestamp=0
     ).serialize()
 
     instance = Tripswitch(
@@ -258,10 +267,16 @@ def test_context_manager__closed__non_error__updates_backend__circuit_stays_clos
 
     mock_client.hset.assert_called_once_with(
         mock_name,
-        mapping=CircuitState(status=CircuitStatus.CLOSED, last_failure=None, failure_count=0).serialize(),
+        mapping=CircuitState(
+            status=CircuitStatus.CLOSED,
+            last_failure=None,
+            failure_count=0,
+            timestamp=1741826753275590,
+        ).serialize(),
     )
 
 
+@freeze_time("2025-03-13T00:45:53.275590")
 def test_context_manager__open__non_error__updates_backend__circuit_closes(mocker, faker, mock_error):
     """Test the update to backend.
 
@@ -277,7 +292,10 @@ def test_context_manager__open__non_error__updates_backend__circuit_closes(mocke
     mock_name = faker.word()
     mock_client = mocker.Mock(spec=redis.Redis)
     mock_client.hgetall.return_value = CircuitState(
-        status=CircuitStatus.OPEN, last_failure=mock_error, failure_count=101
+        status=CircuitStatus.OPEN,
+        last_failure=mock_error,
+        failure_count=101,
+        timestamp=0,
     ).serialize()
 
     instance = Tripswitch(
@@ -295,17 +313,23 @@ def test_context_manager__open__non_error__updates_backend__circuit_closes(mocke
 
     mock_client.hset.assert_called_once_with(
         mock_name,
-        mapping=CircuitState(status=CircuitStatus.CLOSED, last_failure=None, failure_count=0).serialize(),
+        mapping=CircuitState(
+            status=CircuitStatus.CLOSED,
+            last_failure=None,
+            failure_count=0,
+            timestamp=1741826753275590,
+        ).serialize(),
     )
 
 
+@freeze_time("2025-03-13T00:45:53.275590")
 def test_monitor_decorator(mocker, mock_error):
     """Test the `monitor` decorator."""
     from tripswitch import Tripswitch, monitor
 
     mock_client = mocker.Mock(spec=redis.Redis)
     mock_client.hgetall.return_value = CircuitState(
-        status=CircuitStatus.CLOSED, last_failure=None, failure_count=0
+        status=CircuitStatus.CLOSED, last_failure=None, failure_count=0, timestamp=1
     ).serialize()
 
     class MyTripswitch(Tripswitch):
@@ -319,9 +343,13 @@ def test_monitor_decorator(mocker, mock_error):
 
     foo()
 
+    mock_client.hgetall.assert_has_calls([mocker.call("foo"), mocker.call("foo")])
     mock_client.hset.assert_called_once_with(
         "foo",
         mapping=CircuitState(
-            status=CircuitStatus.OPEN, last_failure=mock_error, failure_count=1
+            status=CircuitStatus.OPEN,
+            last_failure=mock_error,
+            failure_count=1,
+            timestamp=1741826753275590,
         ).serialize(),
     )
