@@ -96,7 +96,6 @@ convention = "numpy"
 [tool.mypy]
 files = ["src"]
 exclude = ["build"]
-python_version = "3.9"
 ignore_errors = false
 
 [[tool.mypy.overrides]]
