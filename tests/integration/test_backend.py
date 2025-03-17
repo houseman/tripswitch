@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
+import datetime
+
 import pytest
+from circuitbreaker import CircuitBreakerError
 from pytest_lazy_fixtures import lf
 
 from tripswitch.tripswitch import CircuitState, CircuitStatus
@@ -11,9 +14,15 @@ from .errors import FooError
 
 
 @pytest.fixture
-def initial_circuit_state():
-    """Fixture for initial circuit state."""
+def closed_circuit_state():
+    """Fixture for closed circuit state."""
     return CircuitState(status=CircuitStatus.CLOSED, last_failure=None, failure_count=0, timestamp=0)
+
+
+@pytest.fixture
+def open_circuit_state():
+    """Fixture for open circuit state."""
+    return CircuitState(status=CircuitStatus.OPEN, last_failure=FooError(), failure_count=10, timestamp=0)
 
 
 @pytest.fixture(params=[True, False])
@@ -65,9 +74,17 @@ def memcache_backend(memcache_client):
 
 
 @pytest.mark.parametrize("backend", [lf("redis_backend"), lf("valkey_backend"), lf("memcache_backend")])
-def test_redis__closed_circuit__opens_past_threshold(backend):
-    """Integration tests for RedisProvider."""
+def test_closed_circuit__opens_past_threshold(backend, closed_circuit_state):
+    """Test that a circuit breaker opens after exceeding the failure threshold.
+
+    GIVEN a circuit breaker with a failure threshold of 10
+    WHEN the circuit breaker is tripped 15 times
+    THEN the circuit breaker should open.
+    """
     from tripswitch import Tripswitch
+
+    # Set the initial state to closed
+    backend.set("foo", closed_circuit_state)
 
     tripswitch = Tripswitch("foo", backend=backend, expected_exception=FooError, failure_threshold=10)
 
@@ -88,5 +105,90 @@ def test_redis__closed_circuit__opens_past_threshold(backend):
         status=CircuitStatus.OPEN,
         last_failure=FooError("Boom!"),
         failure_count=15,
+        timestamp=output.timestamp,
+    )
+
+
+@pytest.mark.parametrize("backend", [lf("redis_backend"), lf("valkey_backend"), lf("memcache_backend")])
+def test_open_circuit__closed_on_recovery(backend, open_circuit_state):
+    """Test that a circuit breaker closed after a successful call.
+
+    GIVEN an open circuit breaker
+    WHEN a successful call is made after the circuit breaker is open
+    THEN the circuit breaker should closed.
+    """
+    from tripswitch import Tripswitch
+
+    # Set the initial state to open
+    backend.set("foo", open_circuit_state)
+
+    tripswitch = Tripswitch("foo", backend=backend, expected_exception=FooError, failure_threshold=10)
+
+    def foo(i: int) -> None:
+        if i <= 10:
+            raise FooError("Boom!")  # noqa: EM101
+
+    for i in range(26):
+        with tripswitch:
+            foo(i)
+
+    output = backend.get("foo")
+
+    assert i == 25
+    assert output == CircuitState(
+        status=CircuitStatus.CLOSED,
+        last_failure=None,
+        failure_count=0,
+        timestamp=output.timestamp,
+    )
+
+
+@pytest.mark.skip(reason="This test is flaky.")
+@pytest.mark.parametrize("backend", [lf("redis_backend"), lf("valkey_backend"), lf("memcache_backend")])
+def test_monitor_decorator(backend, closed_circuit_state):
+    """Test the `monitor` decorator."""
+    from tripswitch import Tripswitch, monitor
+
+    # Set the initial state to closed
+    backend.set("foo", closed_circuit_state)
+
+    class MyTripswitch(Tripswitch):
+        EXPECTED_EXCEPTIONS = (FooError,)
+        BACKEND = backend
+        FAILURE_THRESHOLD = 10
+        RECOVERY_TIMEOUT = 0.01  # Set a low recovery timeout for testing
+
+    @monitor(cls=MyTripswitch)
+    def foo(i: int) -> None:
+        if i <= 10:
+            pass
+        elif 10 < i <= 20:  # 11 - 20
+            raise FooError("Boom!")  # noqa: EM101
+        else:  # 21 - 25
+            pass
+
+        return True
+
+    circuit_breaker_error_count = 0
+
+    for i in range(26):
+        try:
+            foo(i)
+        except CircuitBreakerError as e:  # noqa: PERF203
+            # Sleep until the circuit breaker closed timestamp passes
+            circuit_breaker_error_count += 1
+            sleep_until = e._circuit_breaker.open_until.replace(tzinfo=datetime.timezone.utc)
+            current_time = datetime.datetime.now(tz=datetime.timezone.utc)
+            while current_time <= sleep_until:
+                current_time = datetime.datetime.now(tz=datetime.timezone.utc)
+
+    output = backend.get("foo")
+
+    assert i == 25
+    assert circuit_breaker_error_count == 1
+    assert output == CircuitState(
+        status=CircuitStatus.CLOSED,
+        last_failure=None,
+        failure_count=0,
         timestamp=output.timestamp,
     )
