@@ -120,7 +120,7 @@ class Tripswitch(cb.CircuitBreaker):
                 status=CircuitStatus.CLOSED,
                 last_failure=None,
                 failure_count=0,
-                timestamp=self.timestamp,
+                timestamp=self.timestamp,  # This will be `0` for the first sync.
             )
         )
 
@@ -191,7 +191,7 @@ class Tripswitch(cb.CircuitBreaker):
         -------
         None
         """
-        self._timestamp = int(datetime.datetime.now(tz=None).timestamp() * 1_000_000)
+        self._timestamp = int(datetime.datetime.now(tz=datetime.timezone.utc).timestamp() * 1_000_000)
 
     def __enter__(self) -> None:
         """Enter the circuit breaker context manager.
@@ -226,7 +226,7 @@ class Tripswitch(cb.CircuitBreaker):
             True if no error occurred, False otherwise.
         """
         # First call the superclass __exit__ method, as this updates the state.
-        super().__exit__(exc_type, exc_value, traceback)
+        exit_result = super().__exit__(exc_type, exc_value, traceback)
 
         self._update_timestamp()
 
@@ -239,10 +239,7 @@ class Tripswitch(cb.CircuitBreaker):
             )
         )
 
-        if exc_type is not None:
-            return self.is_failure(exc_type, exc_value)
-
-        return True
+        return exit_result
 
 
 def monitor(*, cls: type[Tripswitch] = Tripswitch) -> Callable[[Callable[P, T]], Callable[P, T]]:

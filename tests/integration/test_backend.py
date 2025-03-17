@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-import datetime
+import time
 
 import pytest
 from circuitbreaker import CircuitBreakerError
@@ -94,13 +94,18 @@ def test_closed_circuit__opens_past_threshold(backend, closed_circuit_state):
         else:
             raise FooError("Boom!")  # noqa: EM101
 
+    raised_error_count = 0
     for i in range(26):
         with tripswitch:
-            foo(i)
+            try:
+                foo(i)
+            except FooError:
+                raised_error_count += 1
 
     output = backend.get("foo")
 
     assert i == 25
+    assert raised_error_count == 15
     assert output == CircuitState(
         status=CircuitStatus.OPEN,
         last_failure=FooError("Boom!"),
@@ -128,13 +133,18 @@ def test_open_circuit__closed_on_recovery(backend, open_circuit_state):
         if i <= 10:
             raise FooError("Boom!")  # noqa: EM101
 
+    raised_error_count = 0
     for i in range(26):
         with tripswitch:
-            foo(i)
+            try:
+                foo(i)
+            except FooError:
+                raised_error_count += 1
 
     output = backend.get("foo")
 
     assert i == 25
+    assert raised_error_count == 11
     assert output == CircuitState(
         status=CircuitStatus.CLOSED,
         last_failure=None,
@@ -143,7 +153,6 @@ def test_open_circuit__closed_on_recovery(backend, open_circuit_state):
     )
 
 
-@pytest.mark.skip(reason="This test is flaky.")
 @pytest.mark.parametrize("backend", [lf("redis_backend"), lf("valkey_backend"), lf("memcache_backend")])
 def test_monitor_decorator(backend, closed_circuit_state):
     """Test the `monitor` decorator."""
@@ -169,23 +178,19 @@ def test_monitor_decorator(backend, closed_circuit_state):
 
         return True
 
-    circuit_breaker_error_count = 0
+    raised_error_count = 0
 
     for i in range(26):
         try:
             foo(i)
-        except CircuitBreakerError as e:  # noqa: PERF203
-            # Sleep until the circuit breaker closed timestamp passes
-            circuit_breaker_error_count += 1
-            sleep_until = e._circuit_breaker.open_until.replace(tzinfo=datetime.timezone.utc)
-            current_time = datetime.datetime.now(tz=datetime.timezone.utc)
-            while current_time <= sleep_until:
-                current_time = datetime.datetime.now(tz=datetime.timezone.utc)
-
+        except FooError:  # noqa: PERF203
+            raised_error_count += 1
+        except CircuitBreakerError:
+            time.sleep(0.02)  # Sleep slightly longer than the recovery timeout
     output = backend.get("foo")
 
     assert i == 25
-    assert circuit_breaker_error_count == 1
+    assert raised_error_count == 10
     assert output == CircuitState(
         status=CircuitStatus.CLOSED,
         last_failure=None,

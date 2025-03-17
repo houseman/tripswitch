@@ -219,7 +219,7 @@ def test_context_manager__closed__error__updates_backend__opens_circuit(mocker, 
     def foo():
         raise mock_error
 
-    with instance:
+    with pytest.raises(type(mock_error)), instance:
         foo()
 
     mock_client.hset.assert_called_once_with(
@@ -341,7 +341,8 @@ def test_monitor_decorator(mocker, mock_error):
     def foo():
         raise mock_error
 
-    foo()
+    with pytest.raises(type(mock_error)):
+        foo()
 
     mock_client.hgetall.assert_has_calls([mocker.call("foo"), mocker.call("foo")])
     mock_client.hset.assert_called_once_with(
