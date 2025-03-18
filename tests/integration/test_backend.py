@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import time
-
 import pytest
 from circuitbreaker import CircuitBreakerError
 from pytest_lazy_fixtures import lf
@@ -74,53 +72,73 @@ def memcache_backend(memcache_client):
 
 
 @pytest.mark.parametrize("backend", [lf("redis_backend"), lf("valkey_backend"), lf("memcache_backend")])
+def test_backend__creates_initial_state(backend, closed_circuit_state):
+    """Test that the backend creates an initial state.
+
+    GIVEN a backend
+    WHEN the backend is initialized
+    THEN the backend should create an initial state.
+    """
+    from tripswitch import Tripswitch
+
+    Tripswitch("foo", backend=backend, expected_exception=FooError, failure_threshold=10)
+
+    output = backend.get("foo")
+
+    assert output == closed_circuit_state
+
+
+@pytest.mark.parametrize("backend", [lf("redis_backend"), lf("valkey_backend"), lf("memcache_backend")])
 def test_closed_circuit__opens_past_threshold(backend, closed_circuit_state):
     """Test that a circuit breaker opens after exceeding the failure threshold.
 
     GIVEN a circuit breaker with a failure threshold of 10
-    WHEN the circuit breaker is tripped 15 times
+    WHEN the circuit breaker is tripped 10 times
     THEN the circuit breaker should open.
+    THEN the circuit breaker should raise CircuitbreakerError on subsequent calls
     """
     from tripswitch import Tripswitch
 
     # Set the initial state to closed
+    closed_circuit_state.failure_count = 9
     backend.set("foo", closed_circuit_state)
 
     tripswitch = Tripswitch("foo", backend=backend, expected_exception=FooError, failure_threshold=10)
 
-    def foo(i: int) -> None:
-        if i <= 10:
-            pass
-        else:
-            raise FooError("Boom!")  # noqa: EM101
+    @tripswitch
+    def foo():
+        raise FooError("Boom!")  # noqa: EM101
 
+    circuit_open_error_count = 0
     raised_error_count = 0
-    for i in range(26):
-        with tripswitch:
-            try:
-                foo(i)
-            except FooError:
-                raised_error_count += 1
+
+    for _ in range(1, 11):
+        try:
+            foo()
+        except CircuitBreakerError:  # noqa: PERF203
+            circuit_open_error_count += 1
+        except FooError:
+            raised_error_count += 1
 
     output = backend.get("foo")
 
-    assert i == 25
-    assert raised_error_count == 15
+    assert raised_error_count == 1  # 9 + 1 = 10
+    assert circuit_open_error_count == 9
     assert output == CircuitState(
         status=CircuitStatus.OPEN,
         last_failure=FooError("Boom!"),
-        failure_count=15,
+        failure_count=10,
         timestamp=output.timestamp,
     )
 
 
 @pytest.mark.parametrize("backend", [lf("redis_backend"), lf("valkey_backend"), lf("memcache_backend")])
-def test_open_circuit__closed_on_recovery(backend, open_circuit_state):
-    """Test that a circuit breaker closed after a successful call.
+def test_open_circuit__call_raises_circuit_breaker_error(backend, open_circuit_state):
+    """Test that a open circuit breaker raises a CircuitBreakerError.
 
     GIVEN an open circuit breaker
-    WHEN a successful call is made after the circuit breaker is open
-    THEN the circuit breaker should closed.
+    WHEN a call is made after the circuit breaker is open
+    THEN the circuit breaker should raise a CircuitBreakerError
     """
     from tripswitch import Tripswitch
 
@@ -129,68 +147,45 @@ def test_open_circuit__closed_on_recovery(backend, open_circuit_state):
 
     tripswitch = Tripswitch("foo", backend=backend, expected_exception=FooError, failure_threshold=10)
 
-    def foo(i: int) -> None:
-        if i <= 10:
-            raise FooError("Boom!")  # noqa: EM101
+    @tripswitch
+    def foo(i: int):
+        pass
 
-    raised_error_count = 0
-    for i in range(26):
-        with tripswitch:
-            try:
-                foo(i)
-            except FooError:
-                raised_error_count += 1
+    with pytest.raises(CircuitBreakerError):
+        foo()
 
     output = backend.get("foo")
 
-    assert i == 25
-    assert raised_error_count == 11
-    assert output == CircuitState(
-        status=CircuitStatus.CLOSED,
-        last_failure=None,
-        failure_count=0,
-        timestamp=output.timestamp,
-    )
+    assert output == open_circuit_state
 
 
 @pytest.mark.parametrize("backend", [lf("redis_backend"), lf("valkey_backend"), lf("memcache_backend")])
-def test_monitor_decorator(backend, closed_circuit_state):
-    """Test the `monitor` decorator."""
+def test_open_circuit__closes_after_recovery(backend, open_circuit_state):
+    """Test that a open circuit breaker closes after the recovery timeout.
+
+    GIVEN an open circuit breaker
+    WHEN the recovery timeout is set to 0
+    THEN the circuit breaker should close after the recovery timeout.
+    """
     from tripswitch import Tripswitch, monitor
 
     # Set the initial state to closed
-    backend.set("foo", closed_circuit_state)
+    backend.set("foo", open_circuit_state)
 
     class MyTripswitch(Tripswitch):
         EXPECTED_EXCEPTIONS = (FooError,)
         BACKEND = backend
-        FAILURE_THRESHOLD = 10
-        RECOVERY_TIMEOUT = 0.01  # Set a low recovery timeout for testing
+        FAILURE_THRESHOLD = open_circuit_state.failure_count
+        RECOVERY_TIMEOUT = 0
 
     @monitor(cls=MyTripswitch)
-    def foo(i: int) -> None:
-        if i <= 10:
-            pass
-        elif 10 < i <= 20:  # 11 - 20
-            raise FooError("Boom!")  # noqa: EM101
-        else:  # 21 - 25
-            pass
+    def foo():
+        pass
 
-        return True
+    foo()
 
-    raised_error_count = 0
-
-    for i in range(26):
-        try:
-            foo(i)
-        except FooError:  # noqa: PERF203
-            raised_error_count += 1
-        except CircuitBreakerError:
-            time.sleep(0.02)  # Sleep slightly longer than the recovery timeout
     output = backend.get("foo")
 
-    assert i == 25
-    assert raised_error_count == 10
     assert output == CircuitState(
         status=CircuitStatus.CLOSED,
         last_failure=None,

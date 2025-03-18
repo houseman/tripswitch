@@ -194,10 +194,7 @@ class Tripswitch(cb.CircuitBreaker):
         self._timestamp = int(datetime.datetime.now(tz=datetime.timezone.utc).timestamp() * 1_000_000)
 
     def __enter__(self) -> None:
-        """Enter the circuit breaker context manager.
-
-        This refreshed the state from backend before entering the context manager.
-        """
+        """Enter the circuit breaker context manager."""
         return super().__enter__()
 
     def __exit__(

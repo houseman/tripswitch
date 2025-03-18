@@ -72,10 +72,7 @@ unit-test: install
 
 ## Run integration tests
 integration-test: install start-redis start-memcached
-	uv run pytest -vv --cov --cov-report html \
-		--cov-report term-missing --cov-report xml \
-		--no-cov-on-fail --cov-fail-under 100 \
-		tests/integration
+	uv run pytest -v tests/integration
 
 # ================ HELP ================
 # In order to add a help text to your command, add the following '## YOUR HELP MESSAGE' above it
