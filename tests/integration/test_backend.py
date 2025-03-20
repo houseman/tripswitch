@@ -71,6 +71,10 @@ def memcache_backend(memcache_client):
     return MemcacheProvider(client=memcache_client)
 
 
+@pytest.mark.integration
+@pytest.mark.redis
+@pytest.mark.valkey
+@pytest.mark.memcache
 @pytest.mark.parametrize("backend", [lf("redis_backend"), lf("valkey_backend"), lf("memcache_backend")])
 def test_backend__creates_initial_state(backend, closed_circuit_state):
     """Test that the backend creates an initial state.
@@ -88,6 +92,10 @@ def test_backend__creates_initial_state(backend, closed_circuit_state):
     assert output == closed_circuit_state
 
 
+@pytest.mark.integration
+@pytest.mark.redis
+@pytest.mark.valkey
+@pytest.mark.memcache
 @pytest.mark.parametrize("backend", [lf("redis_backend"), lf("valkey_backend"), lf("memcache_backend")])
 def test_closed_circuit__opens_past_threshold(backend, closed_circuit_state):
     """Test that a circuit breaker opens after exceeding the failure threshold.
@@ -132,6 +140,10 @@ def test_closed_circuit__opens_past_threshold(backend, closed_circuit_state):
     )
 
 
+@pytest.mark.integration
+@pytest.mark.redis
+@pytest.mark.valkey
+@pytest.mark.memcache
 @pytest.mark.parametrize("backend", [lf("redis_backend"), lf("valkey_backend"), lf("memcache_backend")])
 def test_open_circuit__call_raises_circuit_breaker_error(backend, open_circuit_state):
     """Test that a open circuit breaker raises a CircuitBreakerError.
@@ -159,6 +171,10 @@ def test_open_circuit__call_raises_circuit_breaker_error(backend, open_circuit_s
     assert output == open_circuit_state
 
 
+@pytest.mark.integration
+@pytest.mark.redis
+@pytest.mark.valkey
+@pytest.mark.memcache
 @pytest.mark.parametrize("backend", [lf("redis_backend"), lf("valkey_backend"), lf("memcache_backend")])
 def test_open_circuit__closes_after_recovery(backend, open_circuit_state):
     """Test that a open circuit breaker closes after the recovery timeout.

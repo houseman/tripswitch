@@ -35,6 +35,7 @@ def mock_error():
     return MockError("Boom!")
 
 
+@pytest.mark.valkey
 def test_init__valkey(mocker, faker, fallback_function):
     """Test the initialization of a Tripswitch instance.
 
@@ -74,6 +75,7 @@ def test_init__valkey(mocker, faker, fallback_function):
     assert instance._backed == backend
 
 
+@pytest.mark.memcache
 def test_init__memcache(mocker, faker, fallback_function):
     """Test the initialization of a Tripswitch instance.
 
@@ -120,6 +122,7 @@ def test_init__memcache(mocker, faker, fallback_function):
     assert instance._backed == backend
 
 
+@pytest.mark.state
 def test_init__provider_backend_state_is_set(mocker, faker):
     """Test the initialization of a Tripswitch instance from the backend state.
 
@@ -146,6 +149,7 @@ def test_init__provider_backend_state_is_set(mocker, faker):
     assert instance.failure_threshold == 50
 
 
+@pytest.mark.state
 def test_init__provider_backend_state_not_set(mocker, faker):
     """Test the initialization of a Tripswitch instance from the backend state.
 
@@ -175,6 +179,7 @@ def test_init__provider_backend_state_not_set(mocker, faker):
     assert instance.failure_threshold == 50
 
 
+@pytest.mark.backend
 def test_provider__none(faker):
     """Test the backend property.
 

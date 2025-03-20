@@ -119,7 +119,7 @@ class _BaseHashKeyBackendProvider(_BaseBackendProvider[HashClientT]):
         StateNotFoundError
             If no state exists.
         """
-        if not (state := cast(dict[Union[bytes, str], Union[bytes, str]], self._client.hgetall(name))):
+        if not (state := cast("dict[Union[bytes, str], Union[bytes, str]]", self._client.hgetall(name))):
             raise StateNotFoundError(name=name)
 
         # Return the persisted state.

@@ -388,7 +388,7 @@ wheels = [
 
 [[package]]
 name = "tripswitch"
-version = "0.0.1.dev2"
+version = "0.0.1.dev3"
 source = { editable = "." }
 dependencies = [
     { name = "circuitbreaker" },
@@ -426,14 +426,12 @@ dev = [
 
 [package.metadata]
 requires-dist = [
-    { name = "circuitbreaker", specifier = ">=2.0.0" },
-    { name = "pymemcache", marker = "extra == 'all'", specifier = ">=4.0.0" },
-    { name = "pymemcache", marker = "extra == 'memcache'", specifier = ">=4.0.0" },
-    { name = "redis", marker = "extra == 'all'", specifier = ">=5.2.1" },
-    { name = "redis", marker = "extra == 'redis'", specifier = ">=5.2.1" },
-    { name = "typing-extensions", specifier = ">=4.12.2" },
-    { name = "valkey", marker = "extra == 'all'", specifier = ">=6.1.0" },
-    { name = "valkey", marker = "extra == 'valkey'", specifier = ">=6.1.0" },
+    { name = "circuitbreaker", specifier = ">=2.0.0,<3" },
+    { name = "pymemcache", marker = "extra == 'memcache'", specifier = ">=4.0.0,<5" },
+    { name = "redis", marker = "extra == 'redis'", specifier = ">=5.2.1,<6" },
+    { name = "tripswitch", extras = ["redis", "valkey", "memcache"], marker = "extra == 'all'" },
+    { name = "typing-extensions", specifier = ">=4.12.2,<5" },
+    { name = "valkey", marker = "extra == 'valkey'", specifier = ">=6.1.0,<7" },
 ]
 provides-extras = ["redis", "valkey", "memcache", "all"]
 

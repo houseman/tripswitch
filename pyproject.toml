@@ -1,11 +1,12 @@
 [project]
 name = "tripswitch"
-version = "0.0.1dev2"
+version = "0.0.1dev3"
 description = "A Python Circuit Breaker implementation"
 readme = { file = "README.md", content-type = "text/markdown" }
 license = { file = "LICENSE" }
 requires-python = ">=3.9"
 authors = [{ name = "Scott Houseman", email = "scott@houseman.co.za" }]
+keywords = ["circuit breaker"]
 classifiers = [
     "Development Status :: 3 - Alpha",
     "Intended Audience :: Developers",
@@ -21,13 +22,17 @@ classifiers = [
     "Topic :: Software Development :: Libraries :: Python Modules",
     "Typing :: Typed",
 ]
-dependencies = ["circuitbreaker>=2.0.0", "typing-extensions>=4.12.2"]
+dependencies = ["circuitbreaker>=2.0.0,<3", "typing-extensions>=4.12.2,<5"]
 
 [project.optional-dependencies]
-redis = ["redis>=5.2.1"]
-valkey = ["valkey>=6.1.0"]
-memcache = ["pymemcache>=4.0.0"]
-all = ["redis>=5.2.1", "valkey>=6.1.0", "pymemcache>=4.0.0"]
+redis = ["redis>=5.2.1,<6"]
+
+valkey = ["valkey>=6.1.0,<7"]
+
+memcache = ["pymemcache>=4.0.0,<5"]
+
+# All dependencies
+all = ["tripswitch[redis,valkey,memcache]"]
 
 [dependency-groups]
 dev = [
@@ -88,10 +93,14 @@ ignore = [
 ]
 
 [tool.ruff.lint.isort]
+case-sensitive = true
 required-imports = ["from __future__ import annotations"]
 
 [tool.ruff.lint.pydocstyle]
 convention = "numpy"
+
+[tool.ruff.format]
+docstring-code-format = true
 
 [tool.mypy]
 files = ["src"]
@@ -113,6 +122,7 @@ ignore_errors = true
 [tool.pytest.ini_options]
 pythonpath = ["src"]
 testpaths = ["tests/unit", "tests/integration"]
+markers = ["integration", "valkey", "memcache", "redis", "state"]
 
 [tool.coverage.run]
 branch = true
