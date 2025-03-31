@@ -23,11 +23,11 @@ P = ParamSpec("P")
 
 
 @dataclass
-class CircuitState:
+class TripswitchState:
     """A dataclass for storing the state of a circuit breaker."""
 
-    status: CircuitStatus
-    last_failure: Exception | None
+    status: CircuitState
+    last_failure: BaseException | None
     failure_count: int
     timestamp: int
 
@@ -47,7 +47,7 @@ class CircuitState:
         }
 
     @classmethod
-    def deserialize(cls, state: dict[str | bytes, str | bytes]) -> CircuitState:
+    def deserialize(cls, state: dict[str | bytes, str | bytes]) -> TripswitchState:
         """Load the state from a dictionary containing serialised values.
 
         Parameters
@@ -67,14 +67,14 @@ class CircuitState:
             for key, value in state.items()
         }
         return cls(
-            status=CircuitStatus(decoded_state["status"]),
+            status=CircuitState(decoded_state["status"]),
             last_failure=pickle.loads(base64.b64decode(decoded_state["last_failure"])),  # noqa: S301
             failure_count=int(decoded_state["failure_count"]),
             timestamp=int(decoded_state["timestamp"]),
         )
 
 
-class CircuitStatus(Enum):
+class CircuitState(Enum):
     """The possible status of a circuit breaker."""
 
     CLOSED = cb.STATE_CLOSED  # Circuit is closed, calls are allowed.
@@ -116,15 +116,15 @@ class Tripswitch(cb.CircuitBreaker):
 
         # As this class instance is being initialized, we need to sync an initial state.
         self.sync(
-            state=CircuitState(
-                status=CircuitStatus.CLOSED,
+            state=TripswitchState(
+                status=CircuitState.CLOSED,
                 last_failure=None,
                 failure_count=0,
                 timestamp=self.timestamp,  # This will be `0` for the first sync.
             )
         )
 
-    def sync(self, state: CircuitState) -> None:
+    def sync(self, state: TripswitchState) -> None:
         """Synchronize the given state to the backend.
 
         Returns
@@ -228,8 +228,8 @@ class Tripswitch(cb.CircuitBreaker):
         self._update_timestamp()
 
         self.sync(
-            state=CircuitState(
-                status=CircuitStatus(self.state),
+            state=TripswitchState(
+                status=CircuitState(self.state),
                 last_failure=self.last_failure,
                 failure_count=self.failure_count,
                 timestamp=self.timestamp,

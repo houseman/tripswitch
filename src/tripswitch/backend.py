@@ -12,7 +12,7 @@ import valkey
 from pymemcache.client.base import Client as Memcache
 from typing_extensions import TypeAlias
 
-from .tripswitch import CircuitState, CircuitStatus
+from .tripswitch import CircuitState, TripswitchState
 
 # Define a type variable to represent the backend client type.
 ClientT = TypeVar("ClientT")
@@ -44,13 +44,13 @@ class _AbstractBackedProvider(Generic[ClientT], metaclass=ABCMeta):
     def __init__(self, client: ClientT) -> None: ...
 
     @abstractmethod
-    def get_or_init(self, name: str, state: CircuitState) -> CircuitState: ...
+    def get_or_init(self, name: str, state: TripswitchState) -> TripswitchState: ...
 
     @abstractmethod
-    def get(self, name: str) -> CircuitState: ...
+    def get(self, name: str) -> TripswitchState: ...
 
     @abstractmethod
-    def set(self, name: str, state: CircuitState) -> None: ...
+    def set(self, name: str, state: TripswitchState) -> None: ...
 
 
 class _BaseBackendProvider(_AbstractBackedProvider[ClientT]):
@@ -70,7 +70,7 @@ class _BaseBackendProvider(_AbstractBackedProvider[ClientT]):
         """
         self._client: ClientT = client
 
-    def get_or_init(self, name: str, state: CircuitState) -> CircuitState:
+    def get_or_init(self, name: str, state: TripswitchState) -> TripswitchState:
         """Initialize the backend.
 
         Return state if this is set, else initialize the backend.
@@ -79,12 +79,12 @@ class _BaseBackendProvider(_AbstractBackedProvider[ClientT]):
         ----------
         name : str
             The name of the circuit breaker instance.
-        state : CircuitState
+        state : TripswitchState
             The initial state of the circuit
 
         Returns
         -------
-        CircuitState
+        TripswitchState
             The state of the circuit breaker.
         """
         # Return the persisted state if it exists.
@@ -101,7 +101,7 @@ class _BaseBackendProvider(_AbstractBackedProvider[ClientT]):
 class _BaseHashKeyBackendProvider(_BaseBackendProvider[HashClientT]):
     """A base provider class that implements common logic for hash key backend operations."""
 
-    def get(self, name: str) -> CircuitState:
+    def get(self, name: str) -> TripswitchState:
         """Read state from the backend.
 
         Parameters
@@ -111,7 +111,7 @@ class _BaseHashKeyBackendProvider(_BaseBackendProvider[HashClientT]):
 
         Returns
         -------
-        CircuitState
+        TripswitchState
             The state of the circuit breaker.
 
         Raises
@@ -123,16 +123,16 @@ class _BaseHashKeyBackendProvider(_BaseBackendProvider[HashClientT]):
             raise StateNotFoundError(name=name)
 
         # Return the persisted state.
-        return CircuitState.deserialize(state)
+        return TripswitchState.deserialize(state)
 
-    def set(self, name: str, state: CircuitState) -> None:
+    def set(self, name: str, state: TripswitchState) -> None:
         """Update the backend.
 
         Parameters
         ----------
         name : str
             The name of the circuit breaker instance.
-        state : CircuitState
+        state : TripswitchState
             The state of the circuit breaker.
 
         Returns
@@ -153,7 +153,7 @@ class ValkeyProvider(_BaseHashKeyBackendProvider[valkey.Valkey]):
 class MemcacheProvider(_BaseBackendProvider[Memcache]):
     """A provider that uses Memcache as a backend."""
 
-    def get(self, name: str) -> CircuitState:
+    def get(self, name: str) -> TripswitchState:
         """Read state from the Memcache backend.
 
         Parameters
@@ -163,7 +163,7 @@ class MemcacheProvider(_BaseBackendProvider[Memcache]):
 
         Returns
         -------
-        CircuitState
+        TripswitchState
             The state of the circuit breaker.
 
         Raises
@@ -176,21 +176,21 @@ class MemcacheProvider(_BaseBackendProvider[Memcache]):
 
         # Return the persisted state.
         state: dict = pickle.loads(raw)  # noqa: S301
-        return CircuitState(
-            status=CircuitStatus(state["status"]),
+        return TripswitchState(
+            status=CircuitState(state["status"]),
             last_failure=state["last_failure"],
             failure_count=int(state["failure_count"]),
             timestamp=int(state["timestamp"]),
         )
 
-    def set(self, name: str, state: CircuitState) -> None:
+    def set(self, name: str, state: TripswitchState) -> None:
         """Update the Memcache backend.
 
         Parameters
         ----------
         name : str
             The name of the circuit breaker instance.
-        state : CircuitState
+        state : TripswitchState
             The state of the circuit breaker.
 
         Returns

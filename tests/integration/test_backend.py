@@ -6,7 +6,7 @@ import pytest
 from circuitbreaker import CircuitBreakerError
 from pytest_lazy_fixtures import lf
 
-from tripswitch.tripswitch import CircuitState, CircuitStatus
+from tripswitch.tripswitch import CircuitState, TripswitchState
 
 from .errors import FooError
 
@@ -14,13 +14,13 @@ from .errors import FooError
 @pytest.fixture
 def closed_circuit_state():
     """Fixture for closed circuit state."""
-    return CircuitState(status=CircuitStatus.CLOSED, last_failure=None, failure_count=0, timestamp=0)
+    return TripswitchState(status=CircuitState.CLOSED, last_failure=None, failure_count=0, timestamp=0)
 
 
 @pytest.fixture
 def open_circuit_state():
     """Fixture for open circuit state."""
-    return CircuitState(status=CircuitStatus.OPEN, last_failure=FooError(), failure_count=10, timestamp=0)
+    return TripswitchState(status=CircuitState.OPEN, last_failure=FooError(), failure_count=10, timestamp=0)
 
 
 @pytest.fixture(params=[True, False])
@@ -132,8 +132,8 @@ def test_closed_circuit__opens_past_threshold(backend, closed_circuit_state):
 
     assert raised_error_count == 1  # 9 + 1 = 10
     assert circuit_open_error_count == 9
-    assert output == CircuitState(
-        status=CircuitStatus.OPEN,
+    assert output == TripswitchState(
+        status=CircuitState.OPEN,
         last_failure=FooError("Boom!"),
         failure_count=10,
         timestamp=output.timestamp,
@@ -202,8 +202,8 @@ def test_open_circuit__closes_after_recovery(backend, open_circuit_state):
 
     output = backend.get("foo")
 
-    assert output == CircuitState(
-        status=CircuitStatus.CLOSED,
+    assert output == TripswitchState(
+        status=CircuitState.CLOSED,
         last_failure=None,
         failure_count=0,
         timestamp=output.timestamp,
