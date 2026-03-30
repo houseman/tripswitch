@@ -3,27 +3,33 @@
 from __future__ import annotations
 
 import base64
+import datetime
 import functools
 import pickle
 from dataclasses import dataclass
 from enum import Enum
-from typing import TYPE_CHECKING, Any, Callable
+from typing import TYPE_CHECKING, Callable, TypeVar
 
 import circuitbreaker as cb
+from typing_extensions import ParamSpec
 
 if TYPE_CHECKING:
     from types import TracebackType
 
     from .backend import Backend
 
+T = TypeVar("T")
+P = ParamSpec("P")
+
 
 @dataclass
-class CircuitState:
+class TripswitchState:
     """A dataclass for storing the state of a circuit breaker."""
 
-    status: CircuitStatus
-    last_failure: Exception | None
+    status: CircuitState
+    last_failure: BaseException | None
     failure_count: int
+    timestamp: int
 
     def serialize(self) -> dict[str, str]:
         """Return the state as a dictionary containing serialized values.
@@ -37,10 +43,11 @@ class CircuitState:
             "status": self.status.value,
             "last_failure": base64.b64encode(pickle.dumps(self.last_failure)).decode("utf-8"),
             "failure_count": str(self.failure_count),
+            "timestamp": str(self.timestamp),
         }
 
     @classmethod
-    def deserialize(cls, state: dict[str | bytes, str | bytes]) -> CircuitState:
+    def deserialize(cls, state: dict[str | bytes, str | bytes]) -> TripswitchState:
         """Load the state from a dictionary containing serialised values.
 
         Parameters
@@ -60,18 +67,19 @@ class CircuitState:
             for key, value in state.items()
         }
         return cls(
-            status=CircuitStatus(decoded_state["status"]),
+            status=CircuitState(decoded_state["status"]),
             last_failure=pickle.loads(base64.b64decode(decoded_state["last_failure"])),  # noqa: S301
             failure_count=int(decoded_state["failure_count"]),
+            timestamp=int(decoded_state["timestamp"]),
         )
 
 
-class CircuitStatus(Enum):
+class CircuitState(Enum):
     """The possible status of a circuit breaker."""
 
-    CLOSED = cb.STATE_CLOSED
-    OPEN = cb.STATE_OPEN
-    HALF_OPEN = cb.STATE_HALF_OPEN
+    CLOSED = cb.STATE_CLOSED  # Circuit is closed, calls are allowed.
+    OPEN = cb.STATE_OPEN  # Circuit is open, calls are blocked.
+    HALF_OPEN = cb.STATE_HALF_OPEN  # Circuit is half open, next call will be passed through.
 
 
 class Tripswitch(cb.CircuitBreaker):
@@ -104,19 +112,36 @@ class Tripswitch(cb.CircuitBreaker):
         super().__init__(*args, **kwargs)
         self._name = name
         self._backed = backend if backend is not None else self.BACKEND
-        self.init_from_backend()
+        self._timestamp = 0
 
-    def init_from_backend(self) -> None:
-        """Initialize the circuit breaker from the backend.
+        # As this class instance is being initialized, we need to sync an initial state.
+        self.sync(
+            state=TripswitchState(
+                status=CircuitState.CLOSED,
+                last_failure=None,
+                failure_count=0,
+                timestamp=self.timestamp,  # This will be `0` for the first sync.
+            )
+        )
+
+    def sync(self, state: TripswitchState) -> None:
+        """Synchronize the given state to the backend.
 
         Returns
         -------
             None
         """
-        state = self.backend.get_or_init(self._name)
-        self._state = state.status.value
-        self._last_failure = state.last_failure
-        self._failure_count = state.failure_count
+        backend_state = self.backend.get_or_init(self._name, state)
+        # If the current state has a timestamp and is newer than the backend state,
+        # update the backend to this instance's state.
+        if 0 < state.timestamp > backend_state.timestamp:
+            self.backend.set(self._name, state)
+            return
+
+        # Update the instance state to the backend state.
+        self._state = backend_state.status.value
+        self._last_failure = backend_state.last_failure
+        self._failure_count = backend_state.failure_count
 
     @property
     def backend(self) -> Backend:
@@ -144,6 +169,34 @@ class Tripswitch(cb.CircuitBreaker):
         """
         return self._failure_threshold
 
+    @property
+    def timestamp(self) -> int:
+        """Return the timestamp for the circuit breaker.
+
+        This timestamp includes microseconds, as an integer.
+
+        Returns
+        -------
+        float
+            The timestamp for the circuit breaker.
+        """
+        return self._timestamp
+
+    def _update_timestamp(self) -> None:
+        """Set the timestamp for the circuit breaker.
+
+        This sets the timestamp to the current time, including microseconds, as an integer.
+
+        Returns
+        -------
+        None
+        """
+        self._timestamp = int(datetime.datetime.now(tz=datetime.timezone.utc).timestamp() * 1_000_000)
+
+    def __enter__(self) -> None:
+        """Enter the circuit breaker context manager."""
+        return super().__enter__()
+
     def __exit__(
         self,
         exc_type: type[BaseException] | None,
@@ -169,24 +222,24 @@ class Tripswitch(cb.CircuitBreaker):
         bool
             True if no error occurred, False otherwise.
         """
-        super().__exit__(exc_type, exc_value, traceback)
+        # First call the superclass __exit__ method, as this updates the state.
+        exit_result = super().__exit__(exc_type, exc_value, traceback)
 
-        self.backend.set(
-            name=self.name,
-            state=CircuitState(
-                status=CircuitStatus(self.state),
+        self._update_timestamp()
+
+        self.sync(
+            state=TripswitchState(
+                status=CircuitState(self.state),
                 last_failure=self.last_failure,
                 failure_count=self.failure_count,
-            ),
+                timestamp=self.timestamp,
+            )
         )
 
-        if exc_type is not None:
-            return self.is_failure(exc_type, exc_value)
-
-        return True
+        return exit_result
 
 
-def monitor(*, cls: type[Tripswitch] = Tripswitch) -> Callable[..., Any]:
+def monitor(*, cls: type[Tripswitch] = Tripswitch) -> Callable[[Callable[P, T]], Callable[P, T]]:
     """Return a Tripswitch circuit breaker decorator.
 
     Parameters
@@ -196,13 +249,13 @@ def monitor(*, cls: type[Tripswitch] = Tripswitch) -> Callable[..., Any]:
 
     Returns
     -------
-    Callable[..., Any]
+    Callable[P, T]
         A decorator for the circuit breaker.
     """
 
-    def decorator(func: Callable[..., Any]) -> Callable[..., Any]:
+    def decorator(func: Callable[P, T]) -> Callable[P, T]:
         @functools.wraps(func)
-        def wrapper(*args: tuple, **kwargs: dict) -> Callable[..., Any]:
+        def wrapper(*args: P.args, **kwargs: P.kwargs) -> T:
             return cb.circuit(cls=cls, name=func.__name__)(func)(*args, **kwargs)
 
         return wrapper
